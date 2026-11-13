@@ -221,7 +221,6 @@ export async function mintDevTestSession({ projectId, label, keys, sdk }) {
     credentials: {
       getAuth: async () => null,
       getProjectCredentials: async (id) => (id === projectId ? keys : null),
-      getProject: async (id) => (id === projectId ? keys : null),
     },
   });
   const bundle = await client.auth.createTestSession(projectId, { label });

@@ -1204,7 +1204,7 @@
     "line": 9,
     "language": "ts",
     "kind": "application-or-sdk",
-    "sha256": "63bc8bc9f094e490e5f271cc9306d45f55825e3b06e64702921debbc4ceec4b2",
+    "sha256": "726bd2546a47c72fec7ac67c555cd2ab76e09d8c26eb5b6edde0c47337d775d1",
     "validation": "sdk-snippets"
   },
   {
@@ -1580,7 +1580,7 @@
     "line": 44,
     "language": "",
     "kind": "output-or-pseudocode",
-    "sha256": "09a91032a71886f52add885ee08bf3802ab3010d2e63356566aedaf3567fe090",
+    "sha256": "ce72a53969d66d1f99a874d7625f9dca701f1d228c0599b7bf067885e34ec49f",
     "validation": "sdk-snippets"
   },
   {

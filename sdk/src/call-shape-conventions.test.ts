@@ -29,7 +29,7 @@ function sdkCapturing(
       async getAuth() {
         return { "X-Wallet": "sig" };
       },
-      async getProject() {
+      async getProjectCredentials() {
         return project;
       },
     },

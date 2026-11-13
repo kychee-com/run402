@@ -52,7 +52,7 @@ function makeCreds(): CredentialsProvider {
     async getAuth() {
       return { "SIGN-IN-WITH-X": "test-siwx" };
     },
-    async getProject() {
+    async getProjectCredentials() {
       return null;
     },
   };

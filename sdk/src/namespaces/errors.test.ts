@@ -71,9 +71,6 @@ function makeSdk(fetchImpl: typeof globalThis.fetch): Run402 {
     async getProjectCredentials() {
       return KEYS;
     },
-    async getProject() {
-      return KEYS;
-    },
   };
   return new Run402({ apiBase: "https://api.example.test", credentials: creds, fetch: fetchImpl });
 }
@@ -140,7 +137,6 @@ describe("errors.list", () => {
     const creds: CredentialsProvider = {
       async getAuth() { return { "SIGN-IN-WITH-X": "test-siwx" }; },
       async getProjectCredentials() { return null; },
-      async getProject() { return null; },
     };
     const sdk = new Run402({ apiBase: "https://api.example.test", credentials: creds, fetch });
     await sdk.errors.list("prj_1");

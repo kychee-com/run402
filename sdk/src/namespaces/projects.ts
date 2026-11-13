@@ -188,7 +188,6 @@ export class Projects {
   async provision(opts: ProvisionOptions = {}): Promise<ProvisionResult> {
     gateSecret(this.client, "projects.provision", opts);
     const body: Record<string, unknown> = {};
-    if (opts.tier !== undefined) body.tier = opts.tier;
     if (opts.name !== undefined) body.name = opts.name;
     if (opts.orgId !== undefined) body.org_id = opts.orgId;
 

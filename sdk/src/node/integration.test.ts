@@ -175,6 +175,6 @@ describe("run402() Node factory", () => {
   it("exports NodeCredentialsProvider for advanced consumers", () => {
     const provider = new NodeCredentialsProvider();
     assert.ok(typeof provider.getAuth === "function");
-    assert.ok(typeof provider.getProject === "function");
+    assert.ok(typeof provider.getProjectCredentials === "function");
   });
 });

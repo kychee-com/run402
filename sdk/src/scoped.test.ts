@@ -47,7 +47,7 @@ function makeCreds(
     async getAuth() {
       return { "SIGN-IN-WITH-X": "test-siwx" };
     },
-    async getProject(id: string) {
+    async getProjectCredentials(id: string) {
       if (id === "prj_known") {
         return { anon_key: "anon_xxx", service_key: "service_xxx" };
       }
@@ -84,7 +84,7 @@ describe("r.project() resolution", () => {
         activeCalls += 1;
         return "prj_other";
       },
-      async getProject(id: string) {
+      async getProjectCredentials(id: string) {
         projectLookupCalls += 1;
         if (id === "prj_known") return { anon_key: "a", service_key: "s" };
         return null;
@@ -96,7 +96,7 @@ describe("r.project() resolution", () => {
     assert.ok(p instanceof ScopedRun402);
     assert.equal(p.projectId, "prj_explicit");
     assert.equal(activeCalls, 0, "getActiveProject must NOT be called when id is explicit");
-    assert.equal(projectLookupCalls, 0, "getProject must NOT be called at construction");
+    assert.equal(projectLookupCalls, 0, "getProjectCredentials must NOT be called at construction");
   });
 
   it("explicit id is SYNCHRONOUS: the documented `r.project(id).apply` hero needs no await", () => {
@@ -285,7 +285,7 @@ describe("ScopedRun402 wrapper routing", () => {
   it("caller-supplied project overrides the scoped id", async () => {
     const ledger: string[] = [];
     const creds = makeCreds({
-      async getProject(id: string) {
+      async getProjectCredentials(id: string) {
         ledger.push(`lookup:${id}`);
         if (id === "prj_known") return { anon_key: "anon_known", service_key: "service_known" };
         if (id === "prj_other") return { anon_key: "anon_other", service_key: "service_other" };
@@ -304,7 +304,7 @@ describe("ScopedRun402 wrapper routing", () => {
   it("scoped release observability wrappers bind project and preserve overrides", async () => {
     const ledger: string[] = [];
     const creds = makeCreds({
-      async getProject(id: string) {
+      async getProjectCredentials(id: string) {
         ledger.push(`lookup:${id}`);
         if (id === "prj_known") return { anon_key: "anon_known", service_key: "service_known" };
         if (id === "prj_other") return { anon_key: "anon_other", service_key: "service_other" };
@@ -378,7 +378,7 @@ describe("ScopedRun402 wrapper routing", () => {
   it("scoped apply.resolve binds project and preserves explicit overrides", async () => {
     const ledger: string[] = [];
     const creds = makeCreds({
-      async getProject(id: string) {
+      async getProjectCredentials(id: string) {
         ledger.push(`lookup:${id}`);
         if (id === "prj_known") return { anon_key: "anon_known", service_key: "service_known" };
         if (id === "prj_other") return { anon_key: "anon_other", service_key: "service_other" };

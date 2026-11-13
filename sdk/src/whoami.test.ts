@@ -6,7 +6,7 @@ import type { CredentialsProvider, WalletIdentity, WalletData } from "./credenti
 function makeSdk(creds: Partial<CredentialsProvider>): Run402 {
   const base: CredentialsProvider = {
     async getAuth() { return null; },
-    async getProject() { return null; },
+    async getProjectCredentials() { return null; },
     ...creds,
   };
   return new Run402({ apiBase: "https://api.run402.com", credentials: base });

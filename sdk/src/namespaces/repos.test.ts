@@ -41,7 +41,7 @@ function sdkWith(handler: (call: Call) => { status?: number; body: unknown }): {
     async getAuth() {
       return { authorization: "Bearer test" };
     },
-    async getProject() {
+    async getProjectCredentials() {
       return null;
     },
   };
@@ -1102,7 +1102,6 @@ describe("vault access() — envelope_state + stale_access from desired[]", () =
       // so publish_state is honestly `unknown`, never a guess).
       assert.equal(result.this_keystore?.fingerprint, ownFingerprint);
       assert.equal(result.this_keystore?.covered_on_this_vault, true);
-      assert.equal(result.this_keystore?.covered, true);
       assert.equal(result.this_keystore?.enrolled, false);
       assert.equal(result.this_keystore?.publish_state, "unknown");
       assert.deepEqual(result.unmatched_covered_fingerprints, ["ek_truly_orphan"]);

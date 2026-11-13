@@ -255,11 +255,7 @@ export class Run402 {
     }
     if (
       typeof opts.credentials.getAuth !== "function" ||
-      (
-        typeof opts.credentials.getProjectCredentials !== "function" &&
-        // eslint-disable-next-line @typescript-eslint/no-deprecated -- older custom providers implement only getProject
-        typeof opts.credentials.getProject !== "function"
-      )
+      typeof opts.credentials.getProjectCredentials !== "function"
     ) {
       throw new LocalError(
         "Run402 credentials provider is missing required methods (getAuth, getProjectCredentials)",

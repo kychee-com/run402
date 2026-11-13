@@ -85,7 +85,6 @@ Subcommands:
          [--project <project_id>]
                                       Update per-mailbox settings
   info   [--project <project_id>]            Show mailbox info, including footer policy
-  status [--project <project_id>]            Alias for 'info' (prefer 'info')
   send   --to <email> [--bcc <email>] [mode flags]   Send an email (template or raw HTML)
   list   [--limit <n>] [--after <cursor>] [--direction <inbound|outbound>] [--project <project_id>]
                                       List messages (paginated). Returns BOTH
@@ -223,14 +222,6 @@ Usage:
 
 Usage:
   run402 email info [--project <project_id>]
-`,
-  status: `run402 email status — Alias for 'run402 email info' (prefer 'info')
-
-Usage:
-  run402 email status [--project <project_id>]
-
-See 'run402 email info --help' for details. 'status' is kept for backward
-compatibility; new code should use 'info'.
 `,
   "get-raw": `run402 email get-raw — Fetch raw RFC-822 bytes for an inbound message
 
@@ -824,7 +815,7 @@ async function deleteMailbox(args) {
   }
 }
 
-async function status(args) {
+async function info(args) {
   const valueFlags = ["--project", "--mailbox"];
   validateArgs(args, valueFlags);
   const projectId = resolveProjectId(strictFlagValue(args, "--project"));
@@ -846,8 +837,7 @@ export async function run(sub, args) {
     case "mailboxes": await mailboxes(args); break;
     case "defaults": await defaults(args); break;
     case "update": await updateMailbox(args); break;
-    case "info":
-    case "status": await status(args); break;
+    case "info":   await info(args); break;
     case "send":   await send(args); break;
     case "list":   await list(args); break;
     case "get":    await get(args); break;

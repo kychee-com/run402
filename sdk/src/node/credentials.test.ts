@@ -35,7 +35,7 @@ afterEach(() => {
   rmSync(tempDir, { recursive: true, force: true });
 });
 
-describe("NodeCredentialsProvider.getProject", () => {
+describe("NodeCredentialsProvider.getProjectCredentials", () => {
   it("returns keys for a populated keystore", async () => {
     writeFileSync(
       join(tempDir, "projects.json"),
@@ -46,7 +46,7 @@ describe("NodeCredentialsProvider.getProject", () => {
       }),
     );
     const provider = new NodeCredentialsProvider();
-    const project = await provider.getProject("prj_abc");
+    const project = await provider.getProjectCredentials("prj_abc");
     assert.ok(project);
     assert.equal(project.anon_key, "anon_xyz");
     assert.equal(project.service_key, "service_xyz");
@@ -58,12 +58,12 @@ describe("NodeCredentialsProvider.getProject", () => {
       JSON.stringify({ projects: {} }),
     );
     const provider = new NodeCredentialsProvider();
-    assert.equal(await provider.getProject("prj_missing"), null);
+    assert.equal(await provider.getProjectCredentials("prj_missing"), null);
   });
 
   it("returns null when keystore file does not exist", async () => {
     const provider = new NodeCredentialsProvider();
-    assert.equal(await provider.getProject("prj_anything"), null);
+    assert.equal(await provider.getProjectCredentials("prj_anything"), null);
   });
 });
 

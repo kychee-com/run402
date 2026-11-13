@@ -9,7 +9,7 @@ function makeSdk(fetchImpl: typeof globalThis.fetch): Run402 {
     async getAuth() {
       return { "SIGN-IN-WITH-X": "test-siwx" };
     },
-    async getProject() {
+    async getProjectCredentials() {
       return null;
     },
   };
@@ -37,15 +37,13 @@ describe("projects.provision — org targeting (v1.82)", () => {
 
   it("omits org_id entirely on the cold-start path", async () => {
     const { fetch, body } = captureBody();
-    await makeSdk(fetch).projects.provision({ tier: "prototype", name: "x" });
+    await makeSdk(fetch).projects.provision({ name: "x" });
     assert.ok(!("org_id" in body()), "cold-start body must not carry org_id");
   });
 
-  it("passes through both tier and org_id (the gateway governs tier from the org)", async () => {
+  it("sends no tier: a project runs on its organization's tier", async () => {
     const { fetch, body } = captureBody();
-    await makeSdk(fetch).projects.provision({ orgId: "org_abc", tier: "team" });
-    assert.equal(body().org_id, "org_abc");
-    // The client does not special-case tier; the gateway ignores a client tier.
-    assert.equal(body().tier, "team");
+    await makeSdk(fetch).projects.provision({ orgId: "org_abc" });
+    assert.ok(!("tier" in body()));
   });
 });

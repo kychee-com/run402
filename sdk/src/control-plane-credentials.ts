@@ -16,7 +16,7 @@
  * (`r.session.stepUpOptions`/`stepUpVerify`) and retry.
  *
  * This credential authenticates control-plane operations only; it carries no
- * project anon/service keys, so {@link CredentialsProvider.getProject} returns
+ * project anon/service keys, so {@link CredentialsProvider.getProjectCredentials} returns
  * null (project-key operations need the keystore/wallet).
  */
 
@@ -79,7 +79,7 @@ export function controlPlaneSessionCredentials(
       }
       return { Authorization: `Bearer ${token}` };
     },
-    async getProject(): Promise<ProjectKeys | null> {
+    async getProjectCredentials(): Promise<ProjectKeys | null> {
       // A control-plane session carries no project anon/service keys.
       return null;
     },

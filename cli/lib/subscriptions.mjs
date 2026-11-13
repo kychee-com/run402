@@ -43,7 +43,6 @@ Usage:
 
 Notes:
   - <binding_id> is the id of an ACTIVE telegram row in \`run402 contacts list\`.
-    \`--contact <binding_id>\` is accepted as an alias of \`--binding\`.
   - Absent dimensions are wildcards; an explicit empty list matches NOTHING.
   - Severity is the emitter's to declare (info < notice < warn < critical);
     the rule only filters on it. Without --min-severity a rule carries notice
@@ -75,11 +74,9 @@ function splitCsv(value) {
 
 /** Value flags `subscriptions add` accepts. Exported so the help/parser
  *  consistency test can assert every flag HELP teaches is one the parser
- *  takes — the v4.82.0 split rewrote HELP to `--contact` while the parser
- *  kept `--binding`, and nothing caught the drift. `--contact` stays as an
- *  alias for anyone who learned it from that help text. */
+ *  takes. */
 export const SUBSCRIPTIONS_ADD_VALUE_FLAGS = [
-  "--binding", "--contact", "--project", "--source", "--type", "--class",
+  "--binding", "--project", "--source", "--type", "--class",
   "--min-severity", "--group-by", "--window", "--escalate-to-level",
 ];
 export const SUBSCRIPTIONS_ADD_USAGE =
@@ -106,7 +103,7 @@ async function rulesAdd(args) {
     fail({ code: "BAD_USAGE", message: `Unexpected argument for subscriptions add: ${positionals[0]}` });
   }
 
-  const bindingId = flagValue(a, "--binding") ?? flagValue(a, "--contact");
+  const bindingId = flagValue(a, "--binding");
   const levelRaw = flagValue(a, "--escalate-to-level");
   if (!bindingId === (levelRaw === null)) {
     // Exactly one destination: a chat binding, or the escalation ladder.

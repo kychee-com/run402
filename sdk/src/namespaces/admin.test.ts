@@ -7,7 +7,7 @@ import type { CredentialsProvider } from "../credentials.js";
 function creds(): CredentialsProvider {
   return {
     async getAuth() { return { "SIGN-IN-WITH-X": "t" }; },
-    async getProject() { return null; },
+    async getProjectCredentials() { return null; },
   };
 }
 
@@ -69,12 +69,11 @@ describe("admin.sendFeedback", () => {
     assert.equal(result.status, "sent");
   });
 
-  it("the deprecated sendMessage alias posts to the SAME new path", async () => {
-    // The alias exists so old code keeps compiling — not so it keeps calling
-    // the old route. Both spellings must land on /feedback/v1.
+  it("posts to /feedback/v1, and the old sendMessage spelling is gone", async () => {
     const { fetch, calls } = mockFetch(() => json({ status: "sent" }));
-    await sdk(fetch).admin.sendMessage("via the alias");
+    await sdk(fetch).admin.sendFeedback("hi");
     assert.equal(calls[0]!.url, "https://api.test/feedback/v1");
+    assert.equal((sdk(fetch).admin as unknown as Record<string, unknown>).sendMessage, undefined);
   });
 
   it("includes project_id and handle when relaying a promotion consent", async () => {
@@ -103,15 +102,6 @@ describe("admin.sendFeedback", () => {
     const { fetch, calls } = mockFetch(() => json({ status: "sent" }));
     await sdk(fetch).admin.sendFeedback("hello there", {});
     assert.deepEqual(JSON.parse(calls[0]!.body as string), { message: "hello there" });
-  });
-
-  it("the deprecated sendMessage alias forwards opts too", async () => {
-    const { fetch, calls } = mockFetch(() => json({ status: "sent" }));
-    await sdk(fetch).admin.sendMessage("promote: yes", { project_id: "prj_abc123" });
-    assert.deepEqual(JSON.parse(calls[0]!.body as string), {
-      message: "promote: yes",
-      project_id: "prj_abc123",
-    });
   });
 });
 

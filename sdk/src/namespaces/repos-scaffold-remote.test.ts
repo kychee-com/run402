@@ -27,7 +27,7 @@ function sdk(): Run402 {
     async getAuth() {
       return { authorization: "Bearer test" };
     },
-    async getProject() {
+    async getProjectCredentials() {
       return null;
     },
   };

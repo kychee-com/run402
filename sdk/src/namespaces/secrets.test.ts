@@ -7,7 +7,7 @@ import type { CredentialsProvider } from "../credentials.js";
 function creds(): CredentialsProvider {
   return {
     async getAuth() { return { "SIGN-IN-WITH-X": "t" }; },
-    async getProject(id) { return id === "prj_k" ? { anon_key: "a", service_key: "s" } : null; },
+    async getProjectCredentials(id) { return id === "prj_k" ? { anon_key: "a", service_key: "s" } : null; },
   };
 }
 

@@ -365,7 +365,6 @@ export class NodeActions implements Run402Actions {
     }
     run.setState(step, "running");
     const result = await this.sdk.projects.provision({
-      tier,
       name: input.name,
       orgId: input.orgId,
       idempotencyKey,
@@ -2588,7 +2587,6 @@ export class NodeActions implements Run402Actions {
       run.setState(provisionStep, "running");
       const provisioned = await this.sdk.projects.provision({
         name: input.name,
-        tier: input.tier ?? DEFAULT_BOOTSTRAP_TIER,
         orgId: input.orgId,
         ...(idempotencyKey ? { idempotencyKey } : {}),
       });

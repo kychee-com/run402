@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "9e26f6235f1117faeb89e3c67b766f056249aab8",
-      "sourceDigest": "9c29616a44c5d5b4e8b2a036874889852e5e3981a5a99302a6857a442a8ae576"
+      "revision": "94a79196e49a30dcd9ed6c176d1297caac7dd661",
+      "sourceDigest": "7e0fd48f506032b6b00da47c2ed039d6887bd21300d86d3e8cdad515d3da2a43"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -191,16 +191,6 @@
       "topic": "/errors/gateway/#AMBIGUOUS_EXTERNAL_SELECTION"
     },
     {
-      "code": "AMBIGUOUS_INBOUND_DOMAIN",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#AMBIGUOUS_INBOUND_DOMAIN"
-    },
-    {
       "code": "AMBIGUOUS_MAILBOX",
       "owners": [
         {
@@ -223,16 +213,6 @@
         }
       ],
       "topic": "/errors/client/#AMBIGUOUS_ORG"
-    },
-    {
-      "code": "AMBIGUOUS_RECIPIENT",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#AMBIGUOUS_RECIPIENT"
     },
     {
       "code": "APP_INSTALL_STATE_NOT_FOUND",
@@ -2451,6 +2431,16 @@
       "topic": "/errors/client/#GITHUB_REPOSITORY_ID_REQUIRED"
     },
     {
+      "code": "GRANT_KEY_NO_SPEND_CAP",
+      "owners": [
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
+        }
+      ],
+      "topic": "/errors/gateway/#GRANT_KEY_NO_SPEND_CAP"
+    },
+    {
       "code": "GRANT_KEY_SCOPE_INSUFFICIENT",
       "owners": [
         {
@@ -2991,16 +2981,6 @@
       "topic": "/errors/gateway/#IDENTITY_LINK_RATE_LIMITED"
     },
     {
-      "code": "IDENTITY_LINK_READS_DISABLED",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#IDENTITY_LINK_READS_DISABLED"
-    },
-    {
       "code": "IDENTITY_LINK_REQUIRES_AGENT_EOA",
       "owners": [
         {
@@ -3019,16 +2999,6 @@
         }
       ],
       "topic": "/errors/gateway/#IDENTITY_LINK_REQUIRES_HUMAN_SESSION"
-    },
-    {
-      "code": "IDENTITY_LINK_REVOKE_DISABLED",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#IDENTITY_LINK_REVOKE_DISABLED"
     },
     {
       "code": "IDENTITY_LINK_SECRET_INPUT_FORBIDDEN",
@@ -3059,16 +3029,6 @@
         }
       ],
       "topic": "/errors/gateway/#IDENTITY_LINK_UNKNOWN_FIELD"
-    },
-    {
-      "code": "IDENTITY_LINK_WRITES_DISABLED",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#IDENTITY_LINK_WRITES_DISABLED"
     },
     {
       "code": "IMAGE_DECODE_FAILED",
@@ -4361,16 +4321,6 @@
         }
       ],
       "topic": "/errors/client/#NOT_A_FILE"
-    },
-    {
-      "code": "NOT_A_HUMAN_PRINCIPAL",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#NOT_A_HUMAN_PRINCIPAL"
     },
     {
       "code": "NOT_A_RECIPIENT",
@@ -7459,16 +7409,6 @@
       "topic": "/errors/gateway/#SERVICE_UNAVAILABLE"
     },
     {
-      "code": "SESSION_EXPIRED",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#SESSION_EXPIRED"
-    },
-    {
       "code": "SESSION_INVALID",
       "owners": [
         {
@@ -8771,16 +8711,6 @@
         }
       ],
       "topic": "/errors/gateway/#VAULT_SIGNER_NOT_CONFIGURED"
-    },
-    {
-      "code": "VAULT_STORAGE_NOT_CONFIGURED",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#VAULT_STORAGE_NOT_CONFIGURED"
     },
     {
       "code": "VAULT_TOKEN_BINDING_MISMATCH",

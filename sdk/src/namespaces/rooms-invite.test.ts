@@ -53,7 +53,7 @@ function makeSdk(fetchImpl: typeof globalThis.fetch, withCachedSession = true): 
       // `withAuth: false`), even though one is available.
       return withCachedSession ? { "SIGN-IN-WITH-X": "test-siwx", Authorization: "Bearer cached-session-token" } : null;
     },
-    async getProject() {
+    async getProjectCredentials() {
       return null;
     },
   };

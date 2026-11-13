@@ -16,7 +16,7 @@ function credentials() {
   const keys = { anon_key: "anon-test", service_key: "service-test" };
   return {
     getAuth: async () => ({ "SIGN-IN-WITH-X": "test-siwx" }),
-    getProject: async (id: string) => (id === "prj_1" || id === "prj_active" ? keys : null),
+    getProjectCredentials: async (id: string) => (id === "prj_1" || id === "prj_active" ? keys : null),
     getActiveProject: async () => "prj_active",
   };
 }

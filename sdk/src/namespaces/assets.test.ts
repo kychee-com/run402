@@ -39,7 +39,7 @@ function mockFetch(
 function makeCreds(): CredentialsProvider {
   return {
     async getAuth() { return { "SIGN-IN-WITH-X": "test" }; },
-    async getProject(id: string) {
+    async getProjectCredentials(id: string) {
       if (id === "prj_known") return { anon_key: "anon_k", service_key: "svc_k" };
       return null;
     },

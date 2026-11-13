@@ -48,7 +48,7 @@ function makeCreds(
     async getAuth() {
       return { "SIGN-IN-WITH-X": "test-siwx" };
     },
-    async getProject(id: string) {
+    async getProjectCredentials(id: string) {
       if (id === "prj_known") {
         return { anon_key: "anon_xxx", service_key: "service_xxx" };
       }

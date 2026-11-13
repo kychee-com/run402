@@ -423,7 +423,7 @@ const SURFACE: Capability[] = [
   { id: "cache_inspect",     endpoint: "GET /cache/v1/inspect",                cli: "cache:inspect",       openclaw: "cache:inspect" },
 
   // ── Project lifecycle ────────────────────────────────────────────────────
-  { id: "get_quote",         endpoint: "POST /projects/v1/quote",                cli: "projects:quote",      openclaw: "projects:quote" },
+  { id: "get_quote",         endpoint: "GET /tiers/v1",                          cli: "projects:quote",      openclaw: "projects:quote" },
   { id: "provision",         endpoint: "POST /projects/v1",                      cli: "projects:provision",  openclaw: "projects:provision" },
   { id: "tier_set",           endpoint: "POST /tiers/v1/:tier",                   cli: "tier:set",            openclaw: "tier:set" },
   { id: "delete",            endpoint: "DELETE /projects/v1/:id",                cli: "projects:delete",     openclaw: "projects:delete" },
@@ -1467,7 +1467,7 @@ async function listSdkMethods(): Promise<string[]> {
   // Construct with a stub provider so method discovery works without network or FS.
   const stub = {
     async getAuth() { return null; },
-    async getProject() { return null; },
+    async getProjectCredentials() { return null; },
   };
   const instance = new Run402({
     apiBase: "https://invalid.example",
@@ -1593,10 +1593,8 @@ const CLI_DISPATCH_COMMANDS = ["email:webhooks", "deploy:releases"];
 
 // CLI aliases that route to the same handler as a primary command already in
 // SURFACE. Listed here so the "no untracked commands" check doesn't fail.
-// Primary name is what appears in SURFACE; the alias is kept for backward compat.
-const CLI_ALIAS_COMMANDS = [
-  "email:status", // alias of email:info
-];
+// Empty: a renamed command is deleted, never kept as an alias.
+const CLI_ALIAS_COMMANDS: string[] = [];
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -1903,11 +1901,6 @@ describe("SDK surface alignment", () => {
       // without also compacting.
       "repos.openCompactionGrant",
       "repos.closeCompactionGrant",
-      // Deprecated alias of admin.sendFeedback, kept so code written against
-      // the old name keeps COMPILING. It posts to the new /feedback/v1 path,
-      // so it is not a second capability - it is the same one, spelled the
-      // way it used to be. Delete it when the `message` vocabulary is reused.
-      "admin.sendMessage",
       // add-room-invite: the key-form redemption `rooms join <kri1_…>` runs —
       // it has no capability row of its own, the same law as
       // `session.devicePoll` sharing the `login` verb above: `join_room`'s

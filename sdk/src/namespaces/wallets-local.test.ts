@@ -16,7 +16,7 @@ import type { WalletData, CredentialsProvider } from "../credentials.js";
 function makeCreds(localWallet: WalletData | null, opts: { saveWallet?: boolean } = {}): CredentialsProvider {
   const provider: CredentialsProvider = {
     async getAuth() { return null; },
-    async getProject() { return null; },
+    async getProjectCredentials() { return null; },
     async readWallet() { return localWallet; },
     getWalletPath() { return "/tmp/wallet.json"; },
   };

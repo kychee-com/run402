@@ -10,7 +10,7 @@ function makeSdk(fetchImpl: typeof globalThis.fetch): Run402 {
     async getAuth() {
       return { "SIGN-IN-WITH-X": "test-siwx" };
     },
-    async getProject() {
+    async getProjectCredentials() {
       return null;
     },
   };
@@ -93,9 +93,6 @@ function makeSdkWithContext(
   const credentials: CredentialsProvider = {
     async getAuth() {
       return { "SIGN-IN-WITH-X": "test-siwx" };
-    },
-    async getProject(id: string) {
-      return projects[id] ?? null;
     },
     async getProjectCredentials(id: string) {
       return projects[id] ?? null;

@@ -298,12 +298,12 @@ const r = new Run402({
   apiBase: "https://api.run402.com",
   credentials: {
     async getAuth() { return { Authorization: `Bearer ${session.token}` }; },
-    async getProject(id) { return session.projects[id] ?? null; },
+    async getProjectCredentials(id) { return session.projects[id] ?? null; },
   },
 });
 ```
 
-The `CredentialsProvider` interface has two required methods (`getAuth`, `getProject`) plus optional ones (`saveProject`, `removeProject`, `setActiveProject`, `readWallet`, `saveWallet`, …) for hosts that want full sticky-default behavior.
+The `CredentialsProvider` interface has two required methods (`getAuth`, `getProjectCredentials`) plus optional ones (`saveProject`, `removeProject`, `setActiveProject`, `readWallet`, `saveWallet`, …) for hosts that want full sticky-default behavior.
 
 ## Namespaces
 

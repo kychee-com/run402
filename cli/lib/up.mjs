@@ -345,7 +345,7 @@ export async function run(args = []) {
 
     let result;
     if (repoOnly) {
-      result = await runRepoOnly({ sdk, workDir, createdRepository, nested, opts: parsed, tier, allowWarningCodes, idempotencyKey: flagValue(parsed, "--idempotency-key") ?? undefined });
+      result = await runRepoOnly({ sdk, workDir, createdRepository, nested, opts: parsed, allowWarningCodes, idempotencyKey: flagValue(parsed, "--idempotency-key") ?? undefined });
     } else {
       result = await upWithExplicitSelection(sdk, {
         source,
@@ -772,7 +772,7 @@ async function readLocalGitState(workDir) {
  * create`'s own shape (task 2.6); `up --repo-only` is the "I'm already
  * inside `up`'s mental model" entry point to the same outcome.
  */
-async function runRepoOnly({ sdk, workDir, createdRepository, nested = false, opts, tier, idempotencyKey }) {
+async function runRepoOnly({ sdk, workDir, createdRepository, nested = false, opts, idempotencyKey }) {
   // `sdk.up()`'s action graph auto-approves prerequisites (wallet, tier)
   // for a cold start; calling projects.provision directly bypasses that, so
   // this mirrors the SAME gate `run402 projects provision` itself uses —
@@ -780,7 +780,7 @@ async function runRepoOnly({ sdk, workDir, createdRepository, nested = false, op
   // auth error from the gateway.
   if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) walletAuthHeaders("/projects/v1");
   const name = flagValue(opts, "--name") ?? undefined;
-  const provisioned = await sdk.projects.provision({ tier, name, idempotencyKey });
+  const provisioned = await sdk.projects.provision({ name, idempotencyKey });
   createdRepository = await gitInitIfNeeded(workDir);
   const repo = await composeRepoPushStep({ sdk, workDir, projectId: provisioned.project_id, createdRepository, nested });
   return {

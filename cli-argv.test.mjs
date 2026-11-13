@@ -1450,16 +1450,16 @@ describe("numeric flag validation", () => {
     assert.equal(calls.length, 0, "bad --variant must not hit network");
   });
 
-  it("blob put validates --concurrency before upload init (GH-186)", async () => {
+  it("blob put refuses the removed --concurrency and --no-resume flags before upload init", async () => {
     const { run } = await import("./cli/lib/assets.mjs");
     const file = join(tempDir, "upload.txt");
     writeFileSync(file, "hello");
-    const err = await expectExit1(() =>
-      run("put", [file, "--project", "prj_test123", "--concurrency", "0"]));
-
-    assert.equal(err.code, "BAD_FLAG");
-    assert.match(err.message, /--concurrency/);
-    assert.equal(calls.length, 0, "bad --concurrency must not init an upload");
+    for (const flags of [["--concurrency", "2"], ["--no-resume"]]) {
+      calls = [];
+      const err = await expectExit1(() => run("put", [file, "--project", "prj_test123", ...flags]));
+      assert.equal(err.code, "UNKNOWN_FLAG");
+      assert.equal(calls.length, 0, `${flags[0]} must not init an upload`);
+    }
   });
 
   it("blob put validates --content-type before upload init (GH-237)", async () => {
@@ -1524,7 +1524,7 @@ describe("numeric flag validation", () => {
     globalThis.fetch = applyMockFetch();
     captureStart();
     try {
-      await run("put", [file, "--project", "prj_test123", "--concurrency", "2"]);
+      await run("put", [file, "--project", "prj_test123"]);
     } finally {
       captureStop();
       globalThis.fetch = prevFetch;
@@ -1555,22 +1555,6 @@ describe("numeric flag validation", () => {
     }
     const stateDir = join(stateHome, ".run402", "uploads");
     assert.equal(existsSync(stateDir), false, "v2.1.0 must not create ~/.run402/uploads state files");
-  });
-
-  it("blob put accepts --no-resume without error (backward compatibility)", async () => {
-    const { run } = await import("./cli/lib/assets.mjs");
-    const file = join(tempDir, "compat-upload.txt");
-    writeFileSync(file, "compat");
-    const prevFetch = globalThis.fetch;
-    globalThis.fetch = applyMockFetch();
-    captureStart();
-    try {
-      await run("put", [file, "--project", "prj_test123", "--no-resume"]);
-    } finally {
-      captureStop();
-      globalThis.fetch = prevFetch;
-    }
-    assert.ok(calls.some((c) => c.path === "/apply/v1/plans"), "--no-resume is ignored; apply route is still used");
   });
 
   it("blob put surfaces apply-plan gateway errors as structured JSON (v2.1.0)", async () => {
@@ -2048,33 +2032,21 @@ describe("CLI JSON-only output contract (v3.x cleanup)", () => {
     assert.ok(existsSync(outFile), "MIME bytes must land in --output, never stdout");
   });
 
-  it("assets put --json is a permanent alias for --stream (no deprecation warning, streams NDJSON)", async () => {
+  it("assets put --json is the universal no-op: stdout is the final results array, not NDJSON", async () => {
     const { run } = await import("./cli/lib/assets.mjs");
-    const file = join(tempDir, "alias-json.txt");
+    const file = join(tempDir, "noop-json.txt");
     writeFileSync(file, "hi");
     const prevFetch = globalThis.fetch;
-    const prevStderrWrite = process.stderr.write.bind(process.stderr);
-    let stderrCapture = "";
-    process.stderr.write = (chunk) => { stderrCapture += String(chunk); return true; };
     globalThis.fetch = applyMockFetch();
     captureStart();
     try {
       await run("put", [file, "--project", "prj_test123", "--json"]);
     } finally {
       captureStop();
-      process.stderr.write = prevStderrWrite;
       globalThis.fetch = prevFetch;
     }
-    // cli-conventions-gate: --json and --stream are both accepted aliases,
-    // permanently — no deprecation warning.
-    assert.doesNotMatch(stderrCapture, /deprecated/i,
-      `--json must not warn any more, got: ${JSON.stringify(stderrCapture)}`);
-    const lines = stdout.join("\n").split("\n").filter(Boolean);
-    assert.ok(lines.length >= 1, "should emit at least one NDJSON event");
-    for (const line of lines) {
-      const parsed = JSON.parse(line);
-      assert.equal(typeof parsed.event, "string", `each NDJSON line must have event field, got: ${line}`);
-    }
+    const parsed = JSON.parse(stdout.join("\n"));
+    assert.ok(Array.isArray(parsed), "--json leaves the default results array");
   });
 
   it("assets put --stream emits NDJSON without a deprecation warning", async () => {

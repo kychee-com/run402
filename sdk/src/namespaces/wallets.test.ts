@@ -8,7 +8,7 @@ function sdkWithFetch(fetchImpl) {
     fetch: fetchImpl,
     credentials: {
       async getAuth() { return { "X-Wallet": "sig" }; },
-      async getProject() { return null; },
+      async getProjectCredentials() { return null; },
     },
   });
 }

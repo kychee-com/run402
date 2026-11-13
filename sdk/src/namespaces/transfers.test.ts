@@ -40,7 +40,7 @@ function makeCreds(): CredentialsProvider {
     async getAuth() {
       return { "SIGN-IN-WITH-X": "test-siwx" };
     },
-    async getProject() {
+    async getProjectCredentials() {
       return null;
     },
   };
@@ -409,7 +409,7 @@ describe("admin.transfers.accept (wallet completion)", () => {
       async getAuth() {
         return { "SIGN-IN-WITH-X": "test-siwx" };
       },
-      async getProject() {
+      async getProjectCredentials() {
         return null;
       },
       async saveProject(id, keys) {
@@ -494,7 +494,7 @@ describe("admin.transfers.accept (email-addressed row, the same route)", () => {
       async getAuth() {
         return { "SIGN-IN-WITH-X": "t" };
       },
-      async getProject() {
+      async getProjectCredentials() {
         return null;
       },
       async saveProject(id, keys) {

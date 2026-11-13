@@ -1257,8 +1257,6 @@ export interface VaultAccessResult {
     /** `absent` = no published key (the next vault operation enrolls); `pending` = published, possession unproven; `rotation_required` = the principal's published key is a DIFFERENT key; `unknown` = whoami unavailable. */
     publish_state: "active" | "pending" | "absent" | "rotation_required" | "unknown";
     covered_on_this_vault: boolean;
-    /** @deprecated alias of `covered_on_this_vault`. */
-    covered: boolean;
     next_actions?: Array<{ action: string; why: string }>;
   } | null;
   /** Removed members who still decrypt this vault — see {@link VaultStaleAccessEntry}. Always `[]` when `envelope_state_available` is `false` (no desired-state substrate to compute it from). */
@@ -5492,7 +5490,6 @@ export class Repos {
           enrolled: publishState === "active",
           publish_state: publishState,
           covered_on_this_vault: covered.has(ownFingerprint),
-          covered: covered.has(ownFingerprint),
           ...(!covered.has(ownFingerprint) && publishState === "active"
             ? { next_actions: [
                 { action: "run402 repos access", why: "poll — covered_on_this_vault flips true once a key-holder has wrapped this vault to your key" },

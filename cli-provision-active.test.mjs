@@ -154,7 +154,7 @@ describe("CLI projects provision active-project banner (GH-183)", () => {
     nextProjectId = "prj_first";
     const { run } = await import("./cli/lib/projects.mjs");
     captureStart();
-    await run("provision", ["--tier", "prototype"]);
+    await run("provision", []);
     captureStop();
 
     const parsed = parseStdoutJson();
@@ -168,7 +168,7 @@ describe("CLI projects provision active-project banner (GH-183)", () => {
     nextProjectId = "prj_second";
     const { run } = await import("./cli/lib/projects.mjs");
     captureStart();
-    await run("provision", ["--tier", "prototype"]);
+    await run("provision", []);
     captureStop();
 
     const parsed = parseStdoutJson();

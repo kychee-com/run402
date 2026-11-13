@@ -33,7 +33,7 @@ function makeSdk(fetchImpl: typeof globalThis.fetch): Run402 {
     async getAuth() {
       return { "SIGN-IN-WITH-X": "test-siwx" };
     },
-    async getProject() {
+    async getProjectCredentials() {
       return { anon_key: "anon_xxx", service_key: "service_xxx" };
     },
   };

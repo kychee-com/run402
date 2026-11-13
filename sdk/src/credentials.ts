@@ -130,13 +130,7 @@ export interface CredentialsProvider {
    * credentials are absent. This is a credential-cache lookup, not a project
    * existence check.
    */
-  getProjectCredentials?(id: string): Promise<ProjectKeys | null>;
-
-  /**
-   * @deprecated Use `getProjectCredentials`. This alias is retained only for
-   * older custom providers; first-party SDK code must use the explicit name.
-   */
-  getProject?(id: string): Promise<ProjectKeys | null>;
+  getProjectCredentials(id: string): Promise<ProjectKeys | null>;
 
   /** List locally cached project credentials. Optional and local-cache only; not project inventory. */
   listProjectCredentials?(): Promise<Record<string, ProjectKeys>>;

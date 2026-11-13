@@ -13,7 +13,7 @@ Usage:
 
 Subcommands:
   quote                                   Show pricing tiers
-  provision [--tier <tier>] [--name <n>] [--org <org_id>]  Provision a new Postgres project
+  provision [--name <n>] [--org <org_id>]  Provision a new Postgres project
   use   <project_id>                      Set the active project (used as default for other commands)
   list [--org <org_id>] [--all]               List your projects from the server (name, site_url, custom domains, org_id, active marker)
   rename <project_id> --name <label>      Rename a project (fix an auto-generated name)
@@ -36,8 +36,7 @@ Subcommands:
 
 Examples:
   run402 projects quote
-  run402 projects provision --tier prototype
-  run402 projects provision --tier hobby --name my-app
+  run402 projects provision --name my-app
   run402 projects use prj_abc123
   run402 projects list
   run402 projects list --org 11111111-2222-3333-4444-555555555555
@@ -190,13 +189,12 @@ Notes:
   provision: `run402 projects provision — Provision a new Postgres project
 
 Usage:
-  run402 projects provision [--tier <tier>] [--name <name>] [--org <org_id>] [--idempotency-key <key>]
+  run402 projects provision [--name <name>] [--org <org_id>] [--idempotency-key <key>]
 
 Options:
-  --tier <tier>       Tier for the new project (default: prototype)
   --name <name>       Human-readable name for the project
   --org <org_id>          Provision into an EXISTING org (needs developer+ on it).
-                      Omit for the cold-start path. Tier is org-governed.
+                      Omit for the cold-start path.
   --idempotency-key <key>  Retry-safe key: re-running with the same key returns
                       the existing project instead of duplicating it. Auto-derived
                       from --name when omitted; an unnamed provision stays un-keyed.
@@ -206,11 +204,12 @@ Notes:
     Against a configured Run402 Core target, no Cloud tier/wallet/payment is
     required.
   - The new project becomes the active project after provisioning
+  - A project takes no tier: it runs on its organization's tier
+    ('run402 tier set <tier>' buys one, 'run402 tier status' reads it)
 
 Examples:
   run402 projects provision
-  run402 projects provision --tier prototype
-  run402 projects provision --tier hobby --name my-app
+  run402 projects provision --name my-app
   run402 projects provision --org org_abc123
 `,
   sql: `run402 projects sql — Run a SQL query against a project's database
@@ -328,15 +327,13 @@ async function quote() {
 // scaffolding lives in `run402 up` and `run402 init`, on the app root only.
 
 async function provision(args) {
-  const opts = { tier: "prototype", name: undefined, orgId: undefined, idempotencyKey: undefined };
+  const opts = { name: undefined, orgId: undefined, idempotencyKey: undefined };
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--tier" && args[i + 1]) opts.tier = args[++i];
     // Use !== undefined so an empty-string value is captured (and rejected
     // below) rather than silently dropped by the falsy-check pattern.
     if (args[i] === "--name" && args[i + 1] !== undefined) opts.name = args[++i];
     // --org targets an EXISTING org (v1.82); caller needs developer+ on it.
-    // Omitted = cold-start. Tier is org-governed, so --tier is irrelevant here
-    // (the gateway ignores a client-supplied tier in all cases).
+    // Omitted = cold-start.
     if (args[i] === "--org" && args[i + 1] !== undefined) opts.orgId = args[++i];
     // Retry-safety: re-running provision (the agent's natural mode after a
     // crash/fresh session) must not duplicate-bill a project.
@@ -393,7 +390,7 @@ async function provision(args) {
   const activeBefore = getActiveProjectId();
   try {
     const data = await withAutoApprove(() =>
-      getSdk().projects.provision({ tier: opts.tier, name: opts.name, orgId: opts.orgId, idempotencyKey: opts.idempotencyKey }),
+      getSdk().projects.provision({ name: opts.name, orgId: opts.orgId, idempotencyKey: opts.idempotencyKey }),
     );
     const activeAfter = getActiveProjectId();
     const out = { ...data };
@@ -924,8 +921,8 @@ async function deleteProject(projectId, args = []) {
 
 const FLAGS_BY_SUB = {
   provision: {
-    known: ["--tier", "--name", "--org", "--idempotency-key"],
-    values: ["--tier", "--name", "--org", "--idempotency-key"],
+    known: ["--name", "--org", "--idempotency-key"],
+    values: ["--name", "--org", "--idempotency-key"],
   },
   list: { known: ["--org", "--all"], values: ["--org"] },
   rename: { known: ["--project", "--name"], values: ["--project", "--name"] },

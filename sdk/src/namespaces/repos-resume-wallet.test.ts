@@ -42,7 +42,7 @@ function providerWithWallet(order: string[], existing: WalletData | null): Crede
     async getAuth() {
       return { "SIGN-IN-WITH-X": "test-siwx" };
     },
-    async getProject() {
+    async getProjectCredentials() {
       return null;
     },
     async readWallet() {
@@ -106,7 +106,7 @@ describe("r.repos.resume — wallet bootstrap before the claim (design D5)", () 
       async getAuth() {
         return { "SIGN-IN-WITH-X": "test-siwx" };
       },
-      async getProject() {
+      async getProjectCredentials() {
         return null;
       },
     };

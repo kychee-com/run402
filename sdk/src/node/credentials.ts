@@ -161,10 +161,6 @@ export class NodeCredentialsProvider implements CredentialsProvider {
     return coreLoadKeyStore(this.options.keystorePath).projects;
   }
 
-  async getProject(id: string): Promise<ProjectKeys | null> {
-    return this.getProjectCredentials(id);
-  }
-
   async saveProject(id: string, project: ProjectKeys): Promise<void> {
     coreSaveProject(id, project, this.options.keystorePath);
   }

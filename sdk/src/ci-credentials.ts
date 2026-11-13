@@ -62,7 +62,7 @@ export function createCiSessionCredentials(
       }
       return { Authorization: `Bearer ${token}` };
     },
-    async getProject(id: string): Promise<ProjectKeys | null> {
+    async getProjectCredentials(id: string): Promise<ProjectKeys | null> {
       if (id !== opts.projectId) return null;
       return { anon_key: "", service_key: "" };
     },
@@ -149,7 +149,7 @@ async function exchangeWithRun402Ci(
     async getAuth() {
       return null;
     },
-    async getProject() {
+    async getProjectCredentials() {
       return null;
     },
   };

@@ -14,17 +14,18 @@ import type { OperationActorSnapshot } from "./identity-links.types.js";
 
 export type ProjectTier = "prototype" | "hobby" | "team";
 
+/**
+ * A project takes no tier: its tier is the owning organization's
+ * (`r.tier.set` buys one, `r.tier.status()` reads it).
+ */
 export interface ProvisionOptions {
-  /** Tier determines price, lease length, storage, and API-call limits. Default: "prototype". */
-  tier?: ProjectTier;
   /** Optional display name. Auto-generated when omitted. */
   name?: string;
   /**
    * Provision into an EXISTING org by id (v1.82). The caller must hold a
    * `developer`+ membership on that org (a project-scoped grant cannot authorize
    * creating a new project). Omit for the cold-start path — the wallet's billing
-   * account is used or auto-created exactly as before. Note: tier is governed by
-   * the org/organization, not the project — the gateway ignores a client tier.
+   * account is used or auto-created exactly as before.
    */
   orgId?: string;
   /**

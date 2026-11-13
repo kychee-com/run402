@@ -761,7 +761,7 @@ describe("SECRET_REQUIRES_CLI (code-mode MCP, task 1.2)", () => {
   });
 
   it("client.assertSecretReturn throws only when returnSecrets is false", () => {
-    const creds = { async getAuth() { return null; }, async getProject() { return null; } };
+    const creds = { async getAuth() { return null; }, async getProjectCredentials() { return null; } };
     const base = { apiBase: "https://api.test", fetch: globalThis.fetch, credentials: creds };
     const refusing = buildClient({ ...base, capabilities: { returnSecrets: false } });
     assert.throws(

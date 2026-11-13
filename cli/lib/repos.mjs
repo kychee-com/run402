@@ -68,7 +68,7 @@ Usage:
   run402 repos <verb> [options] — fifteen verbs, tiered by how often you reach for them:
 
 Common:
-  run402 repos create [name]  [--org <org_id>] [--dir <path>] [--nested] [--tier <tier>] [--project <project_id>]
+  run402 repos create [name]  [--org <org_id>] [--dir <path>] [--nested] [--project <project_id>]
                               [--byo <s3://bucket/prefix>] [--profile <name> | --ambient] [--region <r>] [--endpoint <url>] [--no-init]
   run402 repos view           [--project <project_id>] [--repo <repo_id>] [--human]
   run402 repos list           [--org <org_id>] [--human]
@@ -409,7 +409,6 @@ Options:
                     app as untracked noise. Nothing else in the enclosing
                     repository is touched (no .gitignore, index, or submodule).
                     No-op on a directory that is already its own toplevel.
-  --tier <tier>     create: project tier (default: prototype) — new projects only
   --idempotency-key <key>
                     create: re-running with the same key resolves to the
                     same project instead of creating a second one — new
@@ -832,7 +831,7 @@ async function inferRepoName(dir) {
 
 // ─── create ─────────────────────────────────────────────────────────────────
 
-const CREATE_VALUE_FLAGS = ["--org", "--dir", "--tier", "--idempotency-key", "--project", "--byo", "--profile", "--region", "--endpoint"];
+const CREATE_VALUE_FLAGS = ["--org", "--dir", "--idempotency-key", "--project", "--byo", "--profile", "--region", "--endpoint"];
 
 /** vault-byo-primary-bucket task 3.5 — `--byo <destination>` + the SAME credential/region/endpoint flags `repos mirror` already uses. `undefined` when `--byo` was not passed (byte-identical to today). */
 function resolveByoOption(a) {
@@ -957,7 +956,6 @@ async function createAdopt(projectId, dir, a) {
 
 async function createProvision(name, dir, a) {
   const sdk = getSdk();
-  const tier = flagValue(a, "--tier") ?? "prototype";
   // `optional: true` — a fresh wallet with no org yet is the cold-start path
   // `projects provision` itself supports; `--org` targets an existing one.
   const orgId = await resolveOrgId(a, { cmd: "repos", optional: true });
@@ -986,7 +984,7 @@ async function createProvision(name, dir, a) {
   if (!isCoreApiTarget() && !loadLiveControlPlaneSession()) walletAuthHeaders("/projects/v1");
 
   const provisionOnce = () =>
-    withAutoApprove(() => sdk.projects.provision({ tier, name, ...(orgId ? { orgId } : {}), idempotencyKey }));
+    withAutoApprove(() => sdk.projects.provision({ name, ...(orgId ? { orgId } : {}), idempotencyKey }));
 
   let provisioned;
   try {
@@ -1056,11 +1054,11 @@ async function create(args) {
         hint: "run402 repos create --project <project_id> to adopt, or run402 repos create <name> to provision a new one. Name it afterward with `run402 repos rename`.",
       });
     }
-    if (flagValue(a, "--tier") != null || flagValue(a, "--idempotency-key") != null) {
+    if (flagValue(a, "--idempotency-key") != null) {
       fail({
         code: "BAD_USAGE",
-        message: "--tier / --idempotency-key only apply when provisioning a NEW project — they do not apply with --project.",
-        hint: "Drop --project to provision a new project, or drop --tier/--idempotency-key to adopt the existing one.",
+        message: "--idempotency-key only applies when provisioning a NEW project — it does not apply with --project.",
+        hint: "Drop --project to provision a new project, or drop --idempotency-key to adopt the existing one.",
       });
     }
     return createAdopt(adoptProjectId, dir, a);
@@ -1077,41 +1075,6 @@ async function create(args) {
 async function listViaBulkRead(sdk, orgId) {
   const result = await sdk.repos.listByOrg(orgId);
   return Array.isArray(result.vaults) ? result.vaults : [];
-}
-
-/**
- * DEPRECATED fallback, kept only until every deployed gateway answers
- * `GET /vaults/v1?org_id=`: the old client-side N+1 (list the
- * org's projects, then read each one's vault status). Delete this
- * function once the bulk route has shipped long enough that no gateway
- * still 404s it.
- */
-async function listViaFallback(sdk, orgId) {
-  const result = await sdk.projects.list({ org: orgId });
-  const projects = Array.isArray(result.projects) ? result.projects : [];
-  const repos = [];
-  for (const p of projects) {
-    let status;
-    try {
-      status = await sdk.repos.status({ project_id: p.id });
-    } catch {
-      continue;
-    }
-    if (!status.vault) continue;
-    repos.push({
-      repo_id: status.repo_id,
-      project_id: p.id,
-      project_name: p.name ?? null,
-      repo_name: null,
-      org_slug: null,
-      vault_policy: status.vault.vault_policy,
-      newest_generation: status.vault.newest_generation ?? null,
-      source_bytes: String(status.vault.storage?.source_bytes ?? "0"),
-      genesis_admitted_at: status.vault.genesis_admitted_at,
-      created_at: null,
-    });
-  }
-  return repos;
 }
 
 /** `repos list --human`: a compact roster — one line per repo (address, generation, bytes, policy). */
@@ -1138,22 +1101,11 @@ async function list(args) {
   const orgId = await resolveOrgId(a, { cmd: "repos" });
 
   let repos;
-  let usedFallback = false;
   try {
     repos = await listViaBulkRead(sdk, orgId);
   } catch (err) {
-    if (err?.status === 404) {
-      usedFallback = true;
-      try {
-        repos = await listViaFallback(sdk, orgId);
-      } catch (fallbackErr) {
-        reportSdkError(fallbackErr);
-        return;
-      }
-    } else {
-      reportSdkError(err);
-      return;
-    }
+    reportSdkError(err);
+    return;
   }
 
   let orgSlug = repos.find((r) => r.org_slug)?.org_slug ?? null;
@@ -1171,7 +1123,7 @@ async function list(args) {
     return;
   }
   printJson(sdk, { org_id: orgId, org_slug: orgSlug, repos });
-  console.error(`${repos.length} vault-bearing project(s) in this organization${usedFallback ? " (per-project fallback read — the bulk vaults-by-org route is not live on this gateway yet)" : ""}`);
+  console.error(`${repos.length} vault-bearing project(s) in this organization`);
   if (orgSlug) console.error(`org slug: ${orgSlug} — a repo with an address-form name set is reachable at run402::${orgSlug}/<name>`);
   printVerboseStats(a, sdk);
 }

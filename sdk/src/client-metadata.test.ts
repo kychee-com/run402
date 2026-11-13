@@ -32,7 +32,7 @@ function captureFetch(seen: string[]): typeof globalThis.fetch {
 
 const noCreds: CredentialsProvider = {
   async getAuth() { return null; },
-  async getProject() { return null; },
+  async getProjectCredentials() { return null; },
 };
 
 describe("client metadata surface", () => {

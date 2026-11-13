@@ -30,8 +30,8 @@ describe("createCiSessionCredentials", () => {
     assert.deepEqual(await creds.getAuth("/apply/v1/plans"), {
       Authorization: "Bearer ci-session",
     });
-    assert.deepEqual(await creds.getProject("prj_abc"), { anon_key: "", service_key: "" });
-    assert.equal(await creds.getProject("prj_other"), null);
+    assert.deepEqual(await creds.getProjectCredentials("prj_abc"), { anon_key: "", service_key: "" });
+    assert.equal(await creds.getProjectCredentials("prj_other"), null);
     assert.equal(await creds.getActiveProject?.(), "prj_abc");
   });
 
@@ -40,7 +40,7 @@ describe("createCiSessionCredentials", () => {
       async getAuth() {
         return { Authorization: "Bearer user-session" };
       },
-      async getProject() {
+      async getProjectCredentials() {
         return null;
       },
     };

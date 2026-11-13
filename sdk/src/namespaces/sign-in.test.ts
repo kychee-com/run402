@@ -43,7 +43,7 @@ function makeCreds(overrides: Partial<CredentialsProvider> = {}): CredentialsPro
     async getAuth() {
       return { "SIGN-IN-WITH-X": "test-siwx" };
     },
-    async getProject() {
+    async getProjectCredentials() {
       return null;
     },
     ...overrides,

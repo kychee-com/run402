@@ -24,7 +24,7 @@ function makeCreds(
     async getAuth() {
       return { "X-Test-Auth": "yes" };
     },
-    async getProject() {
+    async getProjectCredentials() {
       return null;
     },
     ...overrides,

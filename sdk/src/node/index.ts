@@ -11,7 +11,7 @@
  * ```ts
  * import { run402 } from "@run402/sdk/node";
  * const r = run402();
- * const project = await r.projects.provision({ tier: "prototype" });
+ * const project = await r.projects.provision({ name: "my-site" });
  * await r.sites.deployDir({ project: project.project_id, dir: "./my-site" });
  * ```
  *

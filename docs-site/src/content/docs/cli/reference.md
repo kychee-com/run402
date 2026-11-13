@@ -66,7 +66,7 @@ Uniform contract:
 - Failure: stderr JSON envelope with top-level `status: "error"` + non-zero exit. That sentinel appears on stderr only.
 - Validation commands may exit 0 with payload issues, e.g. `validate-expose` prints `has_errors: true`; branch on payload fields.
 - Payload-internal `status` fields are not envelopes, e.g. `doctor.checks[].status`.
-- JSON is ALWAYS the default on stdout. `--json` is a universally-accepted NO-OP: every command takes it, and passing it never changes stdout. Never pass it to "get JSON" — you already have JSON. The one exception is `assets put --json`, a deprecated alias for `--stream` (NDJSON progress).
+- JSON is ALWAYS the default on stdout. `--json` is a universally-accepted NO-OP: every command takes it, and passing it never changes stdout. Never pass it to "get JSON" — you already have JSON. NDJSON progress on `assets put` is `--stream`.
 - Human-readable rendering is an explicit opt-out, spelled `--human` (`run402 up`, `run402 errors list`). `--human` combined with `--json` is a `BAD_USAGE` error.
 - `cli-output-contract.test.mjs` and `cli-json-noop-contract.test.mjs` guard this; violations are regressions.
 - v3.0 breaking change: success wrapper `{ status: "ok", ...payload }` removed; gate on exit code. Stderr error envelope unchanged.

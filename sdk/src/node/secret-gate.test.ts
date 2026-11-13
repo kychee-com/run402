@@ -142,7 +142,7 @@ const SAMPLE_ARGS: Record<SecretReturningMethod, unknown[]> = {
 
 const noCreds: CredentialsProvider = {
   async getAuth() { return null; },
-  async getProject() { return null; },
+  async getProjectCredentials() { return null; },
 };
 
 function refusingFetch(reached: string[]): typeof globalThis.fetch {

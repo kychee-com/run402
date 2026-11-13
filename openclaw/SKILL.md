@@ -511,11 +511,11 @@ Views always run with `security_invoker=true` — they inherit the underlying ta
 `run402 assets put` returns an `AssetRef`. The URL is content-addressed (`pr-<public_id>.run402.com/_blob/<key>-<8hex>.<ext>`), served through CloudFront, and never needs cache invalidation:
 
 ```bash
-run402 assets put ./logo.png    --json
-run402 assets put ./app.js      --json
-run402 assets put ./styles.css  --json
-run402 assets put ./asset       --key assets/logo --content-type image/svg+xml --json
-run402 assets put ./hero.jpg    --meta uploaded_by=agent_abc --meta tags=hero,banner --exif-policy strip --json
+run402 assets put ./logo.png
+run402 assets put ./app.js
+run402 assets put ./styles.css
+run402 assets put ./asset       --key assets/logo --content-type image/svg+xml
+run402 assets put ./hero.jpg    --meta uploaded_by=agent_abc --meta tags=hero,banner --exif-policy strip
 ```
 
 Each response includes:

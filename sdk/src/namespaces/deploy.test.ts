@@ -73,7 +73,7 @@ interface FakeWiring {
 function defaultCreds(): CredentialsProvider {
   return {
     getAuth: async () => null,
-    getProject: async () => ({ anon_key: "ak", service_key: "sk" }),
+    getProjectCredentials: async () => ({ anon_key: "ak", service_key: "sk" }),
   };
 }
 
@@ -100,8 +100,7 @@ function makeWiring(credentials: CredentialsProvider = defaultCreds()): FakeWiri
       requests.push(recorded);
       return handler(recorded) as T;
     },
-    getProject: (id: string) => credentials.getProject(id),
-    getProjectCredentials: (id: string) => credentials.getProject(id),
+    getProjectCredentials: (id: string) => credentials.getProjectCredentials(id),
     credentials,
     fetch: (async (url: string | URL | Request, init?: RequestInit) => {
       const u = typeof url === "string" ? url : url.toString();
@@ -845,7 +844,7 @@ describe("Deploy.apply (happy path)", () => {
       async getAuth() {
         return { Authorization: "Bearer user-session" };
       },
-      async getProject() {
+      async getProjectCredentials() {
         return { anon_key: "ak", service_key: "sk" };
       },
     });
@@ -5370,7 +5369,7 @@ describe("cold-restart apikey recovery — auto-minted anon token (vault-deploy-
 
   function coldCreds(): CredentialsProvider {
     // The returning-agent shape: a live signer, no local project keys.
-    return { getAuth: async () => null, getProject: async () => null };
+    return { getAuth: async () => null, getProjectCredentials: async () => null };
   }
 
   it("cache miss: mints a short-lived ANON token once and uses it as the apikey", async () => {
@@ -5439,7 +5438,7 @@ describe("cold-restart apikey recovery — auto-minted anon token (vault-deploy-
   });
 
   it("a cache entry with an EMPTY anon key counts as a miss and recovers via the mint", async () => {
-    const w = makeWiring({ getAuth: async () => null, getProject: async () => ({ anon_key: "", service_key: "sk" }) });
+    const w = makeWiring({ getAuth: async () => null, getProjectCredentials: async () => ({ anon_key: "", service_key: "sk" }) });
     w.setHandler((req) => {
       if (req.path === MINT) return { secret: "tok_minted", expires_in: 300 };
       if (req.path === OP) {

@@ -300,8 +300,6 @@ export interface Client {
    */
   requestRaw(path: string, opts: Omit<RequestOptions, "raw" | "body" | "rawBody">): Promise<{ status: number; response: Response }>;
   getProjectCredentials(id: string): Promise<ProjectKeys | null>;
-  /** @deprecated Use getProjectCredentials. */
-  getProject(id: string): Promise<ProjectKeys | null>;
   /** The underlying credentials provider. Namespaces use this to access optional methods (saveProject, setActiveProject, ...). */
   readonly credentials: CredentialsProvider;
   /**
@@ -382,7 +380,7 @@ async function offerCachedServiceKey(kernel: KernelConfig, opts: RequestOptions,
   const projectId = opts.projectKeyFallback;
   if (projectId === undefined || kernel.projectAuth === "service_key") return;
   if (!err.actedAs || err.actedAs.includes("credential=project_service_key")) return;
-  const keys = await lookupProjectCredentials(kernel.credentials, projectId).catch(() => null);
+  const keys = await kernel.credentials.getProjectCredentials(projectId).catch(() => null);
   if (!keys?.service_key) return;
   const offer: NextAction = {
     type: "run_cli_command",
@@ -411,7 +409,7 @@ async function sendRequest<T>(
   const serviceKeyRequested = withAuth && opts.projectKeyFallback !== undefined && kernel.projectAuth === "service_key"
     && !AUTH_HEADER_NAMES.some((h) => hasHeader(fetchHeaders, h));
   if (serviceKeyRequested) {
-    const keys = await lookupProjectCredentials(credentials, opts.projectKeyFallback!);
+    const keys = await credentials.getProjectCredentials(opts.projectKeyFallback!);
     if (!keys?.service_key) {
       const info = credentials.getProjectCredentialCacheInfo?.();
       throw new ProjectCredentialNotFound(opts.projectKeyFallback!, context, (info ?? {}) as unknown as Record<string, unknown>);
@@ -430,7 +428,7 @@ async function sendRequest<T>(
         fetchHeaders[k] = v;
       }
     } else if (opts.projectKeyFallback && !AUTH_HEADER_NAMES.some((h) => hasHeader(fetchHeaders, h))) {
-      const keys = await lookupProjectCredentials(credentials, opts.projectKeyFallback);
+      const keys = await credentials.getProjectCredentials(opts.projectKeyFallback);
       if (keys?.service_key) fetchHeaders.Authorization = `Bearer ${keys.service_key}`;
     }
   }
@@ -609,21 +607,13 @@ function envelopeCode(body: unknown): string | null {
   return typeof code === "string" ? code : null;
 }
 
-/** The provider's cached keys for a project, through the explicit name or the older `getProject` alias. */
-function lookupProjectCredentials(credentials: CredentialsProvider, id: string): Promise<ProjectKeys | null> {
-  return credentials.getProjectCredentials
-    ? credentials.getProjectCredentials(id)
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- older custom providers implement only getProject
-    : credentials.getProject?.(id) ?? Promise.resolve(null);
-}
-
 export function buildClient(kernel: KernelConfig): Client {
   // One stats accumulator per client: every request this `Run402` instance
   // makes (directly or through a namespace) mutates the SAME object, because
   // every closure below captures `kernelWithStats`, not the caller's `kernel`.
   const stats: ClientStats = kernel.stats ?? emptyClientStats();
   const kernelWithStats: KernelConfig = kernel.stats === stats ? kernel : { ...kernel, stats };
-  const getProjectCredentials = (id: string) => lookupProjectCredentials(kernel.credentials, id);
+  const getProjectCredentials = (id: string) => kernel.credentials.getProjectCredentials(id);
   const capabilities = Object.freeze(resolveClientCapabilities(kernel.capabilities));
   return {
     apiBase: kernel.apiBase,
@@ -640,7 +630,6 @@ export function buildClient(kernel: KernelConfig): Client {
       return { status: env.status, response: env.response! };
     },
     getProjectCredentials,
-    getProject: getProjectCredentials,
     credentials: kernel.credentials,
     fetch: kernel.fetch,
     stats: () => ({ ...stats }),

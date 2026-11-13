@@ -75,17 +75,11 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="AMBIGUOUS_EXTERNAL_SELECTION"></a>
 [`AMBIGUOUS_EXTERNAL_SELECTION`](/errors/gateway/#AMBIGUOUS_EXTERNAL_SELECTION)
 
-<a id="AMBIGUOUS_INBOUND_DOMAIN"></a>
-[`AMBIGUOUS_INBOUND_DOMAIN`](/errors/gateway/#AMBIGUOUS_INBOUND_DOMAIN)
-
 <a id="AMBIGUOUS_MAILBOX"></a>
 [`AMBIGUOUS_MAILBOX`](/errors/gateway/#AMBIGUOUS_MAILBOX)
 
 <a id="AMBIGUOUS_ORG"></a>
 [`AMBIGUOUS_ORG`](/errors/client/#AMBIGUOUS_ORG)
-
-<a id="AMBIGUOUS_RECIPIENT"></a>
-[`AMBIGUOUS_RECIPIENT`](/errors/gateway/#AMBIGUOUS_RECIPIENT)
 
 <a id="APP_INSTALL_STATE_NOT_FOUND"></a>
 [`APP_INSTALL_STATE_NOT_FOUND`](/errors/gateway/#APP_INSTALL_STATE_NOT_FOUND)
@@ -609,6 +603,9 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="GITHUB_REPOSITORY_ID_REQUIRED"></a>
 [`GITHUB_REPOSITORY_ID_REQUIRED`](/errors/client/#GITHUB_REPOSITORY_ID_REQUIRED)
 
+<a id="GRANT_KEY_NO_SPEND_CAP"></a>
+[`GRANT_KEY_NO_SPEND_CAP`](/errors/gateway/#GRANT_KEY_NO_SPEND_CAP)
+
 <a id="GRANT_KEY_SCOPE_INSUFFICIENT"></a>
 [`GRANT_KEY_SCOPE_INSUFFICIENT`](/errors/client/#GRANT_KEY_SCOPE_INSUFFICIENT)
 
@@ -765,17 +762,11 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="IDENTITY_LINK_RATE_LIMITED"></a>
 [`IDENTITY_LINK_RATE_LIMITED`](/errors/gateway/#IDENTITY_LINK_RATE_LIMITED)
 
-<a id="IDENTITY_LINK_READS_DISABLED"></a>
-[`IDENTITY_LINK_READS_DISABLED`](/errors/gateway/#IDENTITY_LINK_READS_DISABLED)
-
 <a id="IDENTITY_LINK_REQUIRES_AGENT_EOA"></a>
 [`IDENTITY_LINK_REQUIRES_AGENT_EOA`](/errors/gateway/#IDENTITY_LINK_REQUIRES_AGENT_EOA)
 
 <a id="IDENTITY_LINK_REQUIRES_HUMAN_SESSION"></a>
 [`IDENTITY_LINK_REQUIRES_HUMAN_SESSION`](/errors/gateway/#IDENTITY_LINK_REQUIRES_HUMAN_SESSION)
-
-<a id="IDENTITY_LINK_REVOKE_DISABLED"></a>
-[`IDENTITY_LINK_REVOKE_DISABLED`](/errors/gateway/#IDENTITY_LINK_REVOKE_DISABLED)
 
 <a id="IDENTITY_LINK_SECRET_INPUT_FORBIDDEN"></a>
 [`IDENTITY_LINK_SECRET_INPUT_FORBIDDEN`](/errors/gateway/#IDENTITY_LINK_SECRET_INPUT_FORBIDDEN)
@@ -785,9 +776,6 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="IDENTITY_LINK_UNKNOWN_FIELD"></a>
 [`IDENTITY_LINK_UNKNOWN_FIELD`](/errors/gateway/#IDENTITY_LINK_UNKNOWN_FIELD)
-
-<a id="IDENTITY_LINK_WRITES_DISABLED"></a>
-[`IDENTITY_LINK_WRITES_DISABLED`](/errors/gateway/#IDENTITY_LINK_WRITES_DISABLED)
 
 <a id="IMAGE_DECODE_FAILED"></a>
 [`IMAGE_DECODE_FAILED`](/errors/gateway/#IMAGE_DECODE_FAILED)
@@ -1160,9 +1148,6 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="NOT_A_FILE"></a>
 [`NOT_A_FILE`](/errors/client/#NOT_A_FILE)
-
-<a id="NOT_A_HUMAN_PRINCIPAL"></a>
-[`NOT_A_HUMAN_PRINCIPAL`](/errors/gateway/#NOT_A_HUMAN_PRINCIPAL)
 
 <a id="NOT_A_RECIPIENT"></a>
 [`NOT_A_RECIPIENT`](/errors/gateway/#NOT_A_RECIPIENT)
@@ -2001,9 +1986,6 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="SERVICE_UNAVAILABLE"></a>
 [`SERVICE_UNAVAILABLE`](/errors/gateway/#SERVICE_UNAVAILABLE)
 
-<a id="SESSION_EXPIRED"></a>
-[`SESSION_EXPIRED`](/errors/gateway/#SESSION_EXPIRED)
-
 <a id="SESSION_INVALID"></a>
 [`SESSION_INVALID`](/errors/client/#SESSION_INVALID)
 
@@ -2381,9 +2363,6 @@ The catalog records owning source locations and pinned external contributions. A
 
 <a id="VAULT_SIGNER_NOT_CONFIGURED"></a>
 [`VAULT_SIGNER_NOT_CONFIGURED`](/errors/gateway/#VAULT_SIGNER_NOT_CONFIGURED)
-
-<a id="VAULT_STORAGE_NOT_CONFIGURED"></a>
-[`VAULT_STORAGE_NOT_CONFIGURED`](/errors/gateway/#VAULT_STORAGE_NOT_CONFIGURED)
 
 <a id="VAULT_TOKEN_BINDING_MISMATCH"></a>
 [`VAULT_TOKEN_BINDING_MISMATCH`](/errors/client/#VAULT_TOKEN_BINDING_MISMATCH)

@@ -28,9 +28,9 @@ describe("controlPlaneSessionCredentials", () => {
     assert.deepEqual(await creds.getAuth("/b"), { Authorization: "Bearer tok_2" });
   });
 
-  it("carries no project keys (getProject → null)", async () => {
+  it("carries no project keys (getProjectCredentials → null)", async () => {
     const creds = controlPlaneSessionCredentials({ token: "cps_tok" });
-    assert.equal(await creds.getProject("prj_x"), null);
+    assert.equal(await creds.getProjectCredentials("prj_x"), null);
   });
 
   it("throws a LocalError when neither token nor getToken is given", () => {
@@ -48,7 +48,7 @@ describe("controlPlaneSessionCredentials", () => {
     const creds = controlPlaneSessionCredentials({ token: "cps_tok" });
     assert.equal(isControlPlaneSessionCredentials(creds), true);
     assert.equal(
-      isControlPlaneSessionCredentials({ async getAuth() { return null; }, async getProject() { return null; } }),
+      isControlPlaneSessionCredentials({ async getAuth() { return null; }, async getProjectCredentials() { return null; } }),
       false,
     );
   });

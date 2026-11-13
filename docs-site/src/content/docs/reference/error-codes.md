@@ -77,10 +77,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="AMBIGUOUS_EXTERNAL_SELECTION"></a>
 [`AMBIGUOUS_EXTERNAL_SELECTION`](/errors/gateway/#AMBIGUOUS_EXTERNAL_SELECTION)
 
-<a id="ambiguous_inbound_domain"></a>
-<a id="AMBIGUOUS_INBOUND_DOMAIN"></a>
-[`AMBIGUOUS_INBOUND_DOMAIN`](/errors/gateway/#AMBIGUOUS_INBOUND_DOMAIN)
-
 <a id="ambiguous_mailbox"></a>
 <a id="AMBIGUOUS_MAILBOX"></a>
 [`AMBIGUOUS_MAILBOX`](/errors/gateway/#AMBIGUOUS_MAILBOX)
@@ -88,10 +84,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="ambiguous_org"></a>
 <a id="AMBIGUOUS_ORG"></a>
 [`AMBIGUOUS_ORG`](/errors/client/#AMBIGUOUS_ORG)
-
-<a id="ambiguous_recipient"></a>
-<a id="AMBIGUOUS_RECIPIENT"></a>
-[`AMBIGUOUS_RECIPIENT`](/errors/gateway/#AMBIGUOUS_RECIPIENT)
 
 <a id="app_install_state_not_found"></a>
 <a id="APP_INSTALL_STATE_NOT_FOUND"></a>
@@ -783,6 +775,10 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="GITHUB_REPOSITORY_ID_REQUIRED"></a>
 [`GITHUB_REPOSITORY_ID_REQUIRED`](/errors/client/#GITHUB_REPOSITORY_ID_REQUIRED)
 
+<a id="grant_key_no_spend_cap"></a>
+<a id="GRANT_KEY_NO_SPEND_CAP"></a>
+[`GRANT_KEY_NO_SPEND_CAP`](/errors/gateway/#GRANT_KEY_NO_SPEND_CAP)
+
 <a id="grant_key_scope_insufficient"></a>
 <a id="GRANT_KEY_SCOPE_INSUFFICIENT"></a>
 [`GRANT_KEY_SCOPE_INSUFFICIENT`](/errors/client/#GRANT_KEY_SCOPE_INSUFFICIENT)
@@ -991,10 +987,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="IDENTITY_LINK_RATE_LIMITED"></a>
 [`IDENTITY_LINK_RATE_LIMITED`](/errors/gateway/#IDENTITY_LINK_RATE_LIMITED)
 
-<a id="identity_link_reads_disabled"></a>
-<a id="IDENTITY_LINK_READS_DISABLED"></a>
-[`IDENTITY_LINK_READS_DISABLED`](/errors/gateway/#IDENTITY_LINK_READS_DISABLED)
-
 <a id="identity_link_requires_agent_eoa"></a>
 <a id="IDENTITY_LINK_REQUIRES_AGENT_EOA"></a>
 [`IDENTITY_LINK_REQUIRES_AGENT_EOA`](/errors/gateway/#IDENTITY_LINK_REQUIRES_AGENT_EOA)
@@ -1002,10 +994,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="identity_link_requires_human_session"></a>
 <a id="IDENTITY_LINK_REQUIRES_HUMAN_SESSION"></a>
 [`IDENTITY_LINK_REQUIRES_HUMAN_SESSION`](/errors/gateway/#IDENTITY_LINK_REQUIRES_HUMAN_SESSION)
-
-<a id="identity_link_revoke_disabled"></a>
-<a id="IDENTITY_LINK_REVOKE_DISABLED"></a>
-[`IDENTITY_LINK_REVOKE_DISABLED`](/errors/gateway/#IDENTITY_LINK_REVOKE_DISABLED)
 
 <a id="identity_link_secret_input_forbidden"></a>
 <a id="IDENTITY_LINK_SECRET_INPUT_FORBIDDEN"></a>
@@ -1018,10 +1006,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="identity_link_unknown_field"></a>
 <a id="IDENTITY_LINK_UNKNOWN_FIELD"></a>
 [`IDENTITY_LINK_UNKNOWN_FIELD`](/errors/gateway/#IDENTITY_LINK_UNKNOWN_FIELD)
-
-<a id="identity_link_writes_disabled"></a>
-<a id="IDENTITY_LINK_WRITES_DISABLED"></a>
-[`IDENTITY_LINK_WRITES_DISABLED`](/errors/gateway/#IDENTITY_LINK_WRITES_DISABLED)
 
 <a id="image_decode_failed"></a>
 <a id="IMAGE_DECODE_FAILED"></a>
@@ -1516,10 +1500,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="not_a_file"></a>
 <a id="NOT_A_FILE"></a>
 [`NOT_A_FILE`](/errors/client/#NOT_A_FILE)
-
-<a id="not_a_human_principal"></a>
-<a id="NOT_A_HUMAN_PRINCIPAL"></a>
-[`NOT_A_HUMAN_PRINCIPAL`](/errors/gateway/#NOT_A_HUMAN_PRINCIPAL)
 
 <a id="not_a_recipient"></a>
 <a id="NOT_A_RECIPIENT"></a>
@@ -2633,10 +2613,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="SERVICE_UNAVAILABLE"></a>
 [`SERVICE_UNAVAILABLE`](/errors/gateway/#SERVICE_UNAVAILABLE)
 
-<a id="session_expired"></a>
-<a id="SESSION_EXPIRED"></a>
-[`SESSION_EXPIRED`](/errors/gateway/#SESSION_EXPIRED)
-
 <a id="session_invalid"></a>
 <a id="SESSION_INVALID"></a>
 [`SESSION_INVALID`](/errors/client/#SESSION_INVALID)
@@ -3139,10 +3115,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="vault_signer_not_configured"></a>
 <a id="VAULT_SIGNER_NOT_CONFIGURED"></a>
 [`VAULT_SIGNER_NOT_CONFIGURED`](/errors/gateway/#VAULT_SIGNER_NOT_CONFIGURED)
-
-<a id="vault_storage_not_configured"></a>
-<a id="VAULT_STORAGE_NOT_CONFIGURED"></a>
-[`VAULT_STORAGE_NOT_CONFIGURED`](/errors/gateway/#VAULT_STORAGE_NOT_CONFIGURED)
 
 <a id="vault_token_binding_mismatch"></a>
 <a id="VAULT_TOKEN_BINDING_MISMATCH"></a>

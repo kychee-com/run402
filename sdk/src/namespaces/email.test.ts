@@ -61,7 +61,7 @@ function makeCreds(
     async getAuth() {
       return { "SIGN-IN-WITH-X": "test-siwx" };
     },
-    async getProject(id: string) {
+    async getProjectCredentials(id: string) {
       if (id === "prj_known") {
         return {
           anon_key: "anon_xxx",
@@ -195,7 +195,7 @@ describe("email.getMailbox + listMailboxes wire shape", () => {
       }),
     );
     const creds = makeCreds({
-      async getProject() {
+      async getProjectCredentials() {
         return { anon_key: "a", service_key: "s" };
       },
     });
@@ -1042,7 +1042,7 @@ describe("email mailbox selector (multi-mailbox)", () => {
       }
       throw new Error(`unexpected call: ${call.method} ${call.url}`);
     });
-    const sdk = makeSdk(makeCreds({ async getProject() { return { anon_key: "a", service_key: "s" }; } }), fetch);
+    const sdk = makeSdk(makeCreds({ async getProjectCredentials() { return { anon_key: "a", service_key: "s" }; } }), fetch);
 
     await sdk.email.send("prj_known", { to: "u@example.com", subject: "s", html: "<p>x</p>" });
     assert.equal(calls[1]!.url, "https://api.example.test/mailboxes/v1/mbx_only/messages");
@@ -1055,7 +1055,7 @@ describe("email mailbox selector (multi-mailbox)", () => {
       }
       throw new Error(`unexpected call: ${call.method} ${call.url}`);
     });
-    const sdk = makeSdk(makeCreds({ async getProject() { return { anon_key: "a", service_key: "s" }; } }), fetch);
+    const sdk = makeSdk(makeCreds({ async getProjectCredentials() { return { anon_key: "a", service_key: "s" }; } }), fetch);
 
     await assert.rejects(
       sdk.email.send("prj_known", { to: "u@example.com", subject: "s", html: "<p>x</p>" }),
@@ -1086,7 +1086,7 @@ describe("email mailbox selector (multi-mailbox)", () => {
       }
       throw new Error(`unexpected call: ${call.method} ${call.url}`);
     });
-    const sdk = makeSdk(makeCreds({ async getProject() { return { anon_key: "a", service_key: "s" }; } }), fetch);
+    const sdk = makeSdk(makeCreds({ async getProjectCredentials() { return { anon_key: "a", service_key: "s" }; } }), fetch);
 
     await assert.rejects(
       sdk.email.getMailbox("prj_known"),
@@ -1101,7 +1101,7 @@ describe("email mailbox selector (multi-mailbox)", () => {
       }
       throw new Error(`unexpected call: ${call.method} ${call.url}`);
     });
-    const sdk = makeSdk(makeCreds({ async getProject() { return { anon_key: "a", service_key: "s" }; } }), fetch);
+    const sdk = makeSdk(makeCreds({ async getProjectCredentials() { return { anon_key: "a", service_key: "s" }; } }), fetch);
 
     const mb = await sdk.email.getMailbox("prj_known", "support");
     assert.equal(mb.mailbox_id, "mbx_support");

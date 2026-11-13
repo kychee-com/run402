@@ -46,11 +46,10 @@ function makeWiring(): FakeWiring {
       requests.push(recorded);
       return handler(recorded) as T;
     },
-    getProject: async () => ({ anon_key: "ak", service_key: "sk" }),
     getProjectCredentials: async () => ({ anon_key: "ak", service_key: "sk" }),
     credentials: {
       getAuth: async () => null,
-      getProject: async () => ({ anon_key: "ak", service_key: "sk" }),
+      getProjectCredentials: async () => ({ anon_key: "ak", service_key: "sk" }),
     },
     fetch: (async () =>
       new Response("", { status: 200 })) as typeof globalThis.fetch,

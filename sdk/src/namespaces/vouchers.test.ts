@@ -20,7 +20,7 @@ const creds: CredentialsProvider = {
   async getAuth() {
     return { headers: { "SIGN-IN-WITH-X": "stub" } };
   },
-  async getProject() {
+  async getProjectCredentials() {
     return null;
   },
 };

@@ -87,7 +87,7 @@ function clientWithProject(): Run402 {
     async getAuth() {
       return null;
     },
-    async getProject(id) {
+    async getProjectCredentials(id) {
       return id === "prj_test" ? keys : null;
     },
   };

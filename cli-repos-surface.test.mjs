@@ -620,9 +620,14 @@ describe("run402 repos create — provision + allocate + scaffold, zero deploy c
     assert.equal(envelope.code, "BAD_USAGE");
   });
 
-  it("rejects --tier/--idempotency-key together with --project", async () => {
-    const envelope = await expectFailure("create", ["--project", PROJECT, "--tier", "prototype"]);
+  it("rejects --idempotency-key together with --project", async () => {
+    const envelope = await expectFailure("create", ["--project", PROJECT, "--idempotency-key", "k1"]);
     assert.equal(envelope.code, "BAD_USAGE");
+  });
+
+  it("refuses the removed --tier flag", async () => {
+    const envelope = await expectFailure("create", ["--tier", "prototype"]);
+    assert.ok(["BAD_FLAG", "UNKNOWN_FLAG", "BAD_USAGE"].includes(envelope.code), envelope.code);
   });
 
   it("claims the address-form repo name and prints run402::<slug>/<name> when the owning org has a slug", async () => {
@@ -721,28 +726,21 @@ describe("run402 repos create — cold-start folding on NO_ACTIVE_TIER (kygit-ha
   });
 });
 
-describe("run402 repos list — bulk read with graceful fallback", () => {
+describe("run402 repos list — one bulk read", () => {
   it("uses the bulk vaults-by-org read when the gateway has it", async () => {
     impl.vaultListByOrg = async (orgId) => ({
       vaults: [{ repo_id: REPO, project_id: PROJECT, project_name: "fresh", repo_name: "fresh", org_slug: "acme", vault_policy: null, newest_generation: null, source_bytes: "0", genesis_admitted_at: null, created_at: "2026-01-01T00:00:00.000Z" }],
     });
     const payload = await ok("list", ["--org", ORG]);
-    assert.equal(calls.find((c) => c.method === "projects.list"), undefined, "the fallback N+1 must not run when the bulk read succeeds");
+    assert.equal(calls.find((c) => c.method === "projects.list"), undefined, "no per-project walk");
     assert.equal(payload.repos.length, 1);
     assert.equal(payload.org_slug, "acme");
   });
 
-  it("falls back to the per-project walk when the bulk route 404s, and says so", async () => {
-    impl.projectsList = async () => ({ projects: [{ id: "prj_a", name: "a", org_id: ORG }, { id: "prj_b", name: "b", org_id: ORG }] });
-    impl.vaultStatus = async (input) =>
-      input.project_id === "prj_a"
-        ? vaultStatus({ repo_id: "src_a", vault: vaultRecord({ repo_id: "src_a", project_id: "prj_a" }) })
-        : vaultStatus({ vault: null });
-    const payload = await ok("list", ["--org", ORG]);
+  it("reports a failed bulk read instead of walking projects one by one", async () => {
+    await expectFailure("list", ["--org", ORG]);
     assert.ok(calls.find((c) => c.method === "repos.listByOrg"));
-    assert.ok(calls.find((c) => c.method === "projects.list"), "fallback must have run");
-    assert.equal(payload.repos.length, 1);
-    assert.equal(payload.repos[0].project_id, "prj_a");
+    assert.equal(calls.find((c) => c.method === "projects.list"), undefined, "no per-project N+1 walk");
   });
 
   it("does not fail the whole listing when one bulk row's org has no slug lookup issue", async () => {

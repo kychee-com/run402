@@ -51,7 +51,7 @@ function makeCreds(
     async getAuth() {
       return { "SIGN-IN-WITH-X": "test-siwx" };
     },
-    async getProject(id: string) {
+    async getProjectCredentials(id: string) {
       if (id === "prj_known") {
         return { anon_key: "anon_xxx", service_key: "service_xxx" };
       }
@@ -110,13 +110,13 @@ describe("projects.provision", () => {
     );
     const creds = makeCreds();
     const sdk = makeSdk(creds, fetch);
-    const result = await sdk.projects.provision({ tier: "hobby", name: "my-app" });
+    const result = await sdk.projects.provision({ name: "my-app" });
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0]!.url, "https://api.example.test/projects/v1");
     assert.equal(calls[0]!.method, "POST");
     assert.equal(calls[0]!.headers["SIGN-IN-WITH-X"], "test-siwx");
-    assert.deepEqual(JSON.parse(calls[0]!.body as string), { tier: "hobby", name: "my-app" });
+    assert.deepEqual(JSON.parse(calls[0]!.body as string), { name: "my-app" });
     assert.deepEqual(result, {
       project_id: "prj_new",
       anon_key: "anon_new",
@@ -145,7 +145,7 @@ describe("projects.provision", () => {
       }),
     );
     const sdk = makeSdk(creds, fetch);
-    await sdk.projects.provision({ tier: "prototype" });
+    await sdk.projects.provision({});
 
     assert.deepEqual(saved, [
       { id: "prj_new", project: { anon_key: "anon_new", service_key: "service_new" } },
@@ -199,7 +199,7 @@ describe("projects.provision", () => {
       jsonResponse({ message: "pay up", x402: { price: "$0.30" } }, 402),
     );
     const sdk = makeSdk(creds, fetch);
-    await assert.rejects(sdk.projects.provision({ tier: "hobby" }), PaymentRequired);
+    await assert.rejects(sdk.projects.provision({}), PaymentRequired);
     assert.deepEqual(saved, []);
   });
 

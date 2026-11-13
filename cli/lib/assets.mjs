@@ -2,20 +2,14 @@
  * run402 assets — direct-to-S3 storage CLI.
  *
  * Usage:
- *   run402 assets put <file> [files...] [--project <project_id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--concurrency N] [--no-resume]
+ *   run402 assets put <file> [files...] [--project <project_id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--stream]
  *   run402 assets get <key> --output <file> [--project <project_id>]
  *   run402 assets ls [--project <project_id>] [--prefix <p>] [--limit <n>]
  *   run402 assets rm <key> [--project <project_id>]
  *   run402 assets sign <key> [keys...] [--project <project_id>] [--ttl <seconds>] [--variant <kind>[,<kind>...]]
  *
- * For any file ≤ 5 GiB a single presigned PUT is used. Larger files use S3
- * multipart uploads with 16 MiB parts (640 parts at 10 GiB; up to 10 000
- * parts at 5 TiB). The gateway never carries upload bytes — PUTs go straight
- * to S3 from the client.
- *
- * Resumable uploads are enabled by default. The CLI persists per-upload
- * state to ~/.run402/uploads/<upload_id>.json so a Ctrl-C'd upload can be
- * resumed by re-running the same command.
+ * `put` delegates to `sdk.assets.put` (unified apply); the gateway never
+ * carries upload bytes — PUTs go straight to S3 from the client.
  */
 
 import {
@@ -55,7 +49,7 @@ Options:
   --exif-policy keep|strip  v1.50: EXIF retention policy for image uploads (default keep).
   --stream            NDJSON per-file progress events (for agent consumption).
                       Without --stream, only the final results array is
-                      printed. --json is an accepted alias for --stream.
+                      printed.
   --prefix <p>        Prefix filter (ls only)
   --limit <n>         Max results (ls only; default 100, max 1000)
   --sort <key>        v1.50 ls only: key:asc | createdAt:asc | createdAt:desc (default key:asc).
@@ -76,10 +70,8 @@ Examples:
   run402 assets rm images/logo.png --project prj_abc123
   run402 assets sign images/logo.png --project prj_abc123 --ttl 600
 
-Note: as of v2.1.0, the CLI delegates to sdk.assets.put which routes through
-the unified-apply hero. The pre-v2.1.0 --concurrency and --no-resume flags
-are still accepted for backward compatibility but are ignored; resume
-semantics now live at the apply-plan level (24h plan TTL).
+Note: the CLI delegates to sdk.assets.put, which routes through unified
+apply; resume semantics live at the apply-plan level (24h plan TTL).
 `;
 
 const SUB_HELP = {
@@ -107,8 +99,7 @@ Options:
                       from the stored bytes and the image_exif response field.
   --stream            Emit NDJSON per-file progress events on stdout (for
                       agent consumption). Default: emit only the final
-                      results array (also JSON). --json is an accepted
-                      alias for --stream.
+                      results array (also JSON).
 
 Examples:
   run402 assets put ./artifact.tgz --project prj_abc123
@@ -239,7 +230,7 @@ function die(msg, exit_code = 1) {
 function parseArgs(rawArgs) {
   const args = normalizeArgv(rawArgs);
   const valueFlags = [
-    "--project", "--key", "--content-type", "--concurrency", "--prefix",
+    "--project", "--key", "--content-type", "--prefix",
     "--limit", "--output", "-o", "--ttl", "--variant",
     "--meta", "--exif-policy", "--sort", "--filter",
   ];
@@ -249,10 +240,7 @@ function parseArgs(rawArgs) {
     "--content-type",
     "--private",
     "--immutable",
-    "--concurrency",
-    "--no-resume",
     "--stream",
-    "--json",
     "--prefix",
     "--limit",
     "--output",
@@ -267,7 +255,7 @@ function parseArgs(rawArgs) {
     "-h",
   ], valueFlags);
   const out = { positional: [], project: null, key: null, private: false, immutable: false,
-                 concurrency: 4, resume: true, stream: false, prefix: null, limit: null,
+                 stream: false, prefix: null, limit: null,
                  output: null, ttl: null, variant: null, contentType: null,
                  metadata: null, exifPolicy: null, sort: null, filter: null };
   for (let i = 0; i < args.length; i++) {
@@ -277,13 +265,7 @@ function parseArgs(rawArgs) {
     else if (a === "--content-type") out.contentType = parseContentTypeFlag("--content-type", args[++i]);
     else if (a === "--private") out.private = true;
     else if (a === "--immutable") out.immutable = true;
-    else if (a === "--concurrency") out.concurrency = parseIntegerFlag("--concurrency", args[++i], { min: 1 });
-    else if (a === "--no-resume") out.resume = false;
     else if (a === "--stream") out.stream = true;
-    // `--json` and `--stream` are permanent aliases on `assets put` (both mean
-    // NDJSON progress events on stdout); elsewhere `--json` is a no-op since
-    // stdout is already JSON.
-    else if (a === "--json") { out.stream = true; }
     else if (a === "--prefix") out.prefix = args[++i];
     else if (a === "--limit") out.limit = parseIntegerFlag("--limit", args[++i], { min: 1, max: 1000 });
     else if (a === "--output" || a === "-o") out.output = args[++i];
@@ -462,10 +444,8 @@ async function putOne(projectId, filePath, opts) {
 
   // The CLI delegates to `sdk.assets.put`, which routes through the
   // unified-apply hero (apply/v1/plans -> content/v1/plans -> S3 PUT ->
-  // commit). Resume semantics live at the apply-plan level (24h plan TTL);
-  // a future CLI redesign can expose that. The --concurrency and --no-resume
-  // flags are accepted but ignored — the SDK upload paths handle parallelism
-  // internally.
+  // commit). Resume semantics live at the apply-plan level (24h plan TTL),
+  // and the SDK upload paths handle parallelism internally.
   log(opts, { event: "start", key: destKey, size_bytes: stat.size });
   const bytes = new Uint8Array(readFileSync(filePath));
   const result = await getSdk().assets.put(projectId, destKey, { bytes }, {

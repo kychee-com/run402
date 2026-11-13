@@ -29,9 +29,7 @@ export function hasHelp(args = []) {
 //
 // No command may gate its stdout format on this flag. A command offering a
 // human-readable view exposes it behind `--human` (see `up.mjs`, `errors.mjs`)
-// and rejects `--human` combined with `--json`. The single sanctioned
-// exception to the no-op rule is `assets put --json`, a preserved deprecated
-// alias for `--stream` that selects NDJSON progress rather than a format.
+// and rejects `--human` combined with `--json`.
 const ALWAYS_KNOWN_FLAGS = ["--json"];
 
 export function assertKnownFlags(args = [], knownFlags = [], flagsWithValues = []) {

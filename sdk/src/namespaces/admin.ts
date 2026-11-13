@@ -710,16 +710,6 @@ export class Admin {
     });
   }
 
-  /**
-   * @deprecated Renamed to {@link sendFeedback}. Kept so code written against
-   * the old name keeps compiling; it now posts to `/feedback/v1` like its
-   * replacement. The `message` vocabulary is being freed for addressed
-   * agent/human messaging, which is a different capability with a return path.
-   */
-  async sendMessage(message: string, opts?: FeedbackSendOptions): Promise<SendMessageResult> {
-    return this.sendFeedback(message, opts);
-  }
-
   /** Register agent contact info and start email verification when needed. */
   async setAgentContact(contact: AgentContact): Promise<AgentContactResult> {
     const body: Record<string, string> = { name: contact.name };

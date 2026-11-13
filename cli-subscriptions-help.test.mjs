@@ -43,8 +43,8 @@ describe("run402 subscriptions add — help and parser agree", () => {
     }
   });
 
-  it("--binding is canonical and --contact is its alias, matching the docs", () => {
+  it("--binding is the one spelling; --contact is not a flag", () => {
     assert.match(SUBSCRIPTIONS_ADD_USAGE, /--binding <binding_id>/);
-    assert.ok(SUBSCRIPTIONS_ADD_VALUE_FLAGS.includes("--contact"));
+    assert.ok(!SUBSCRIPTIONS_ADD_VALUE_FLAGS.includes("--contact"));
   });
 });

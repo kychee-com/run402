@@ -17,7 +17,7 @@ function makeSdk(): { r: Run402; calls: string[] } {
     async getAuth() {
       return { "SIGN-IN-WITH-X": "test-siwx" };
     },
-    async getProject() {
+    async getProjectCredentials() {
       return null;
     },
   };

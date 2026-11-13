@@ -24,12 +24,6 @@
  * behavioral test can prove the commands it enumerates are inert, but only a
  * scan proves the ABSENCE of the construct in a command nobody thought to
  * enumerate. Neither axis subsumes the other.
- *
- * Sanctioned exception, and the only one: `run402 assets put --json` is a
- * preserved deprecated alias for `--stream` (NDJSON progress events, not a
- * format switch). It is an `=== "--json"` equality test that sets a stream
- * flag, not a membership test bound to an output gate, so it does not match
- * the axis-C pattern and needs no allowlist entry.
  */
 
 import { describe, it, before, after } from "node:test";
@@ -172,17 +166,15 @@ describe("B. --json is inert on stdout", () => {
 // Deliberately NOT matched (these read the flag without selecting output):
 //   - the `--human` / `--json` conflict checks in up.mjs and errors.mjs, which
 //     test the flag INLINE inside a condition whose body calls fail(), never
-//     console.log, and never bind it to a variable;
-//   - `assets put`'s `=== "--json"` equality alias for --stream.
+//     console.log, and never bind it to a variable.
 //
-// Both are excluded by the pattern's SHAPE rather than by an allowlist, per
+// They are excluded by the pattern's SHAPE rather than by an allowlist, per
 // design D3/risk 4 — an allowlist entry for them would blunt the gate.
 const JSON_BINDING = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*[^;\n]*\.includes\(\s*["']--json["']\s*\)/g;
 
-// Allowlist is intentionally EMPTY. Only two kinds of entry could ever be
-// legitimate — the sanctioned `assets put --stream` alias, and a flag
-// selecting a non-stdout destination — and neither matches the pattern above,
-// so neither needs one. A third kind of entry is a signal the rule is being
+// Allowlist is intentionally EMPTY. The only legitimate kind of entry — a flag
+// selecting a non-stdout destination — does not match the pattern above, so it
+// needs none. A third kind of entry is a signal the rule is being
 // worked around; treat it as such in review rather than widening this set.
 const OUTPUT_GATE_ALLOWLIST = new Set([]);
 

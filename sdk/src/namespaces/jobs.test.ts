@@ -11,7 +11,7 @@ function creds(): CredentialsProvider {
     async getAuth() {
       return { "SIGN-IN-WITH-X": "t" };
     },
-    async getProject(id) {
+    async getProjectCredentials(id) {
       if (id === "prj_k") return { anon_key: "a", service_key: "s" };
       return null;
     },

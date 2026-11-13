@@ -18,7 +18,7 @@ function makeCreds(
     async getAuth() {
       return { "SIGN-IN-WITH-X": "test-siwx" };
     },
-    async getProject() {
+    async getProjectCredentials() {
       return null;
     },
     ...overrides,
@@ -79,14 +79,14 @@ describe("Run402 constructor validation", () => {
         new Run402({
           apiBase: "https://api.example.test",
           credentials: {
-            getProject: async () => null,
+            getProjectCredentials: async () => null,
           } as unknown as CredentialsProvider,
         }),
       (err: unknown) => isLocalError(err) && /getAuth/.test(err.message),
     );
   });
 
-  it("throws LocalError when credentials.getProject is missing", () => {
+  it("throws LocalError when credentials.getProjectCredentials is missing", () => {
     assert.throws(
       () =>
         new Run402({

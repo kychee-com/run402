@@ -1417,7 +1417,7 @@ describe("CLI e2e happy path", () => {
   it("projects provision", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     captureStart();
-    await run("provision", ["--tier", "prototype"]);
+    await run("provision", []);
     captureStop();
     assert.ok(captured().includes("prj_test123"), "should return project_id");
     // Verify project credentials saved locally without using projects.json as inventory.
@@ -1434,7 +1434,7 @@ describe("CLI e2e happy path", () => {
     let threw = null;
     captureStart();
     try {
-      await run("provision", ["--tier", "prototype", "--name", ""]);
+      await run("provision", ["--name", ""]);
     } catch (e) {
       threw = e;
     } finally {
@@ -1457,7 +1457,7 @@ describe("CLI e2e happy path", () => {
     let threw = null;
     captureStart();
     try {
-      await run("provision", ["--tier", "prototype", "--name", "ab\ncd"]);
+      await run("provision", ["--name", "ab\ncd"]);
     } catch (e) {
       threw = e;
     } finally {
@@ -1481,7 +1481,7 @@ describe("CLI e2e happy path", () => {
     let threw = null;
     captureStart();
     try {
-      await run("provision", ["--tier", "prototype", "--name", tooLong]);
+      await run("provision", ["--name", tooLong]);
     } catch (e) {
       threw = e;
     } finally {
@@ -1502,7 +1502,7 @@ describe("CLI e2e happy path", () => {
   it("projects provision with no --name skips validation (GH-176)", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     captureStart();
-    await run("provision", ["--tier", "prototype"]);
+    await run("provision", []);
     captureStop();
     // Validation must NOT trigger; SDK call is mocked and returns prj_test123.
     assert.ok(captured().includes("prj_test123"),
@@ -1512,7 +1512,7 @@ describe("CLI e2e happy path", () => {
   it("projects provision --name 'valid-name-123' passes validation (GH-176)", async () => {
     const { run } = await import("./cli/lib/projects.mjs");
     captureStart();
-    await run("provision", ["--tier", "prototype", "--name", "valid-name-123"]);
+    await run("provision", ["--name", "valid-name-123"]);
     captureStop();
     // Validation must NOT trigger; SDK call is mocked and returns prj_test123.
     assert.ok(captured().includes("prj_test123"),
@@ -1524,7 +1524,7 @@ describe("CLI e2e happy path", () => {
     const exact128 = "a".repeat(128);
     assert.equal(exact128.length, 128, "test setup: name must be exactly 128 chars");
     captureStart();
-    await run("provision", ["--tier", "prototype", "--name", exact128]);
+    await run("provision", ["--name", exact128]);
     captureStop();
     assert.ok(captured().includes("prj_test123"),
       "should reach SDK call when --name is exactly 128 chars");
@@ -1880,7 +1880,7 @@ describe("CLI e2e happy path", () => {
     let threw = null;
     captureStart();
     try {
-      await run("provision", ["--tier", "prototype"]);
+      await run("provision", []);
     } catch (e) {
       threw = e;
     } finally {
