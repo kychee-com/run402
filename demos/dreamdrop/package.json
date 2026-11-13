@@ -32,6 +32,9 @@
   },
   "overrides": {
     "morgan": "^1.12.1",
-    "nodemon": "^3.1.10"
+    "nodemon": "^3.1.10",
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.4"
+    }
   }
 }

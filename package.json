@@ -99,5 +99,8 @@
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "yaml": "^2.8.2"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "overrides": {
+    "minimatch": "^11.0.4"
+  }
 }
