@@ -69,3 +69,35 @@ describe("published packages carry no replaced dependency", () => {
     assert.deepEqual(hits, []);
   });
 });
+
+// The whole runtime dependency set of each published package, by name. A new
+// entry installs on every customer's machine, so it is a reviewed decision:
+// add it here in the same change, with the reason in the commit.
+const ALLOWED = {
+  "run402-mcp": [
+    "@aws-sdk/client-kms", "@hpke/chacha20poly1305", "@hpke/core", "@noble/ciphers", "@noble/curves",
+    "@noble/hashes", "@run402/nwc", "@scure/base", "@typescript/native", "@x402/evm", "@x402/fetch",
+    "acorn", "mppx", "quickjs-emscripten", "undici", "viem",
+  ],
+  run402: [
+    "@aws-sdk/client-kms", "@hpke/chacha20poly1305", "@hpke/core", "@noble/ciphers", "@noble/curves",
+    "@noble/hashes", "@run402/nwc", "@scure/base", "@x402/evm", "@x402/fetch", "mppx", "undici", "viem",
+  ],
+  "@run402/sdk": [
+    "@hpke/chacha20poly1305", "@hpke/core", "@noble/ciphers", "@noble/curves", "@noble/hashes",
+    "@run402/nwc", "@scure/base", "undici",
+  ],
+};
+const INSTALL_HOOKS = ["preinstall", "install", "postinstall"];
+
+describe("published packages declare only the reviewed runtime dependencies", () => {
+  for (const pkg of PACKAGES) {
+    const manifest = JSON.parse(readFileSync(join(root, pkg.path), "utf8"));
+    it(`${pkg.label} declares exactly its allowlisted dependencies`, () => {
+      assert.deepEqual(Object.keys(manifest.dependencies ?? {}).sort(), [...ALLOWED[pkg.label]].sort());
+    });
+    it(`${pkg.label} runs no install script on the customer's machine`, () => {
+      assert.deepEqual(INSTALL_HOOKS.filter((hook) => manifest.scripts?.[hook]), []);
+    });
+  }
+});
