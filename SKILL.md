@@ -353,7 +353,7 @@ export default async (req) => {
 - Value is ISO 3166-1 alpha-2 verbatim from the edge, plus the specials `T1` (Tor exit) and `XX` (unknown) on Cloudflare-fronted custom domains.
 - When the edge supplies no geo the header is **absent** — never empty, never a guessed value — so `?? 'unknown'` (or your preferred fallback) at the read site.
 - Spoof-proof: client-supplied `x-run402-country`, `cf-ipcountry`, and `cloudfront-viewer-country` are scrubbed at both edges; the header your function sees is always minted by the platform from edge geo data.
-- Compat: on custom domains only, the legacy `cf-ipcountry` header is also present with the same value. Prefer `x-run402-country` — it works on every hostname.
+- One header on every hostname: no raw vendor geo header (`cf-ipcountry`, `cloudfront-viewer-country`) reaches your function, so read `x-run402-country`.
 - Static-route hits do NOT receive geo; only routed HTTP function invocations do. Country-varying public-cacheable responses must set their own `Vary`, same as locale.
 
 #### Client-side gotcha: language switchers must write a cookie
