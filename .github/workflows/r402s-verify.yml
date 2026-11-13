@@ -21,6 +21,9 @@ on:
       - "test-vectors/**"
       - ".github/workflows/r402s-verify.yml"
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -28,11 +31,14 @@ jobs:
       run:
         working-directory: r402s-verify
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Pinned to a commit on the action's master branch (its v1 tag), which
+      # takes the toolchain as an input; `@stable` was a movable branch.
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
+          toolchain: stable
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: r402s-verify
       - run: cargo fmt --all -- --check

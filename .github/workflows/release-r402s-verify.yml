@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write # create the release + upload assets
+  contents: read
 
 jobs:
   build:
@@ -45,7 +45,7 @@ jobs:
       run:
         working-directory: r402s-verify
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Ensure target toolchain
         run: rustup target add ${{ matrix.target }}
       - name: Build (release, locked)
@@ -58,7 +58,7 @@ jobs:
         run: |
           cp "target/${{ matrix.target }}/release/r402s-verify" "${{ matrix.artifact }}"
           shasum -a 256 "${{ matrix.artifact }}" > "${{ matrix.artifact }}.sha256"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ matrix.artifact }}
           path: |
@@ -68,8 +68,10 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write # create the release + upload assets
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           merge-multiple: true
       - name: Create release with assets

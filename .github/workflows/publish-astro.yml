@@ -49,6 +49,9 @@ concurrency:
   group: publish-astro
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   publish:
     name: Bump, smoke, publish, tag
@@ -61,9 +64,15 @@ jobs:
       contents: write
       id-token: write
 
+    # Dispatch inputs reach shell steps through env, never by ${{ }}
+    # interpolation into a script.
+    env:
+      BUMP: ${{ inputs.bump }}
+      DRY_RUN: ${{ inputs.dry_run }}
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           # Need history depth for `npm version` to look sane and for the
           # commit-then-push step to operate against the current HEAD.
@@ -74,7 +83,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           # Node 24 ships npm 11.x. OIDC publish (the trusted-publisher
           # token exchange) requires npm 11.5.1+; npm 10.x (bundled with
@@ -134,7 +143,7 @@ jobs:
           # `npm version <kind> --no-git-tag-version` modifies package.json
           # in place and writes the new version to stdout (with a leading
           # `v` we strip).
-          npm version "${{ inputs.bump }}" --no-git-tag-version >/dev/null
+          npm version "$BUMP" --no-git-tag-version >/dev/null
           NEW=$(node -p "require('./package.json').version")
           echo "Bumping @run402/astro: $CUR → $NEW"
           echo "old=$CUR" >> "$GITHUB_OUTPUT"
@@ -270,11 +279,11 @@ jobs:
         run: |
           NEW="${{ steps.bump.outputs.new }}"
           OLD="${{ steps.bump.outputs.old }}"
-          DRY="${{ inputs.dry_run }}"
+          DRY="$DRY_RUN"
           {
             echo "## @run402/astro publish summary"
             echo ""
-            echo "- **Bump:** \`${{ inputs.bump }}\` ($OLD → $NEW)"
+            echo "- **Bump:** \`$BUMP\` ($OLD → $NEW)"
             echo "- **Dry run:** $DRY"
             if [ "$DRY" = "true" ]; then
               echo ""
