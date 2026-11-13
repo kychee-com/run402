@@ -232,7 +232,7 @@ describe("CLI Core target", () => {
     assert.equal(parsed.release_id, "rel_core_test");
 
     const projectCreate = calls.find((call) => call.path === "/projects/v1" && call.method === "POST");
-    assert.deepEqual(projectCreate.body, { tier: "prototype", name: "my-app" });
+    assert.deepEqual(projectCreate.body, { name: "my-app" });
 
     const plan = calls.find((call) => call.path === "/apply/v1/plans" && call.method === "POST");
     assert.equal(plan.body.spec.project, "prj_core_test");
