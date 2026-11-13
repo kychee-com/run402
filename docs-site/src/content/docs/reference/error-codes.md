@@ -879,10 +879,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="IDENTITY_LINK_AUTHENTICATOR_MISMATCH"></a>
 [`IDENTITY_LINK_AUTHENTICATOR_MISMATCH`](/errors/gateway/#IDENTITY_LINK_AUTHENTICATOR_MISMATCH)
 
-<a id="identity_link_capability_unavailable"></a>
-<a id="IDENTITY_LINK_CAPABILITY_UNAVAILABLE"></a>
-[`IDENTITY_LINK_CAPABILITY_UNAVAILABLE`](/errors/gateway/#IDENTITY_LINK_CAPABILITY_UNAVAILABLE)
-
 <a id="identity_link_challenge_expired"></a>
 <a id="IDENTITY_LINK_CHALLENGE_EXPIRED"></a>
 [`IDENTITY_LINK_CHALLENGE_EXPIRED`](/errors/gateway/#IDENTITY_LINK_CHALLENGE_EXPIRED)

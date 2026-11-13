@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "94a79196e49a30dcd9ed6c176d1297caac7dd661",
-      "sourceDigest": "7e0fd48f506032b6b00da47c2ed039d6887bd21300d86d3e8cdad515d3da2a43"
+      "revision": "7d56e8ebf606e992bb994bd2be977a4fe93ffa0b",
+      "sourceDigest": "26529bd5f9ae883d538cb18a7fe1835c7b318c07f127201e228e29b8c32116b3"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -2693,16 +2693,6 @@
         }
       ],
       "topic": "/errors/gateway/#IDENTITY_LINK_AUTHENTICATOR_MISMATCH"
-    },
-    {
-      "code": "IDENTITY_LINK_CAPABILITY_UNAVAILABLE",
-      "owners": [
-        {
-          "owner": "gateway",
-          "source": "packages/gateway/src/utils/error-envelope.ts"
-        }
-      ],
-      "topic": "/errors/gateway/#IDENTITY_LINK_CAPABILITY_UNAVAILABLE"
     },
     {
       "code": "IDENTITY_LINK_CHALLENGE_EXPIRED",
