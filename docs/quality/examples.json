@@ -1193,7 +1193,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/credentials.md",
-    "line": 54,
+    "line": 56,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "47068ad294bbfae13452b64d8cd32dfd16ba39db7c40812635597b499c51ccad",

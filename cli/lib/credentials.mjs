@@ -159,7 +159,10 @@ Usage:
 The cold-restart recovery path, and the ONE credential call an agent can make
 with no human present: a grant key is accepted here. There is no step-up because
 there is nobody to prompt, and what you get back expires, so it cannot become a
-durable root. Defaults to --kind service.
+durable root. Defaults to --kind service, which has developer parity on the
+project: it is minted only for a developer-or-higher member or a grant key whose
+scope and grant are both "*". A narrower key or grant gets 403 FORBIDDEN and may
+mint --kind anon instead.
 `,
 };
 

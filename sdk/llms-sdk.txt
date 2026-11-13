@@ -770,6 +770,8 @@ Zero-downtime rotation is `issue` a second live credential → deploy it → `re
 const token = await r.credentials.mintToken(projectId);  // { secret, expires_in, … }
 ```
 
+A `service` token (the default) has developer parity on the project, so it is minted only for a developer-or-higher member or a grant key whose scope and grant are both `*`; any narrower key or grant gets `403 FORBIDDEN` (`details.required_capability: "*"`) and may mint `kind: "anon"` instead, using the key itself on the routes its scope covers.
+
 Never write an `issue` / `rotate` / `mintToken` response to a result cache, tmp file, or expansion handle — they are secret-bearing, like `provision` and project keys.
 
 **Deploys self-recover on a cold machine.** The apikey-gated deploy legs (content upload, operation polling) read the project's anon key from the local credential cache — and when the cache has no entry (the returning-agent case: the wallet survives, the once-issued keys did not), the SDK mints a short-lived ANON token via this same route automatically, uses it as the apikey, and memoizes it in process memory until it expires. Nothing durable is written anywhere; a client that cannot mint (no signer, no authority) falls through to the pre-existing 401, whose envelope names the recovery. So `deploy.apply()` on a fresh machine with a wallet needs zero extra commands. For a durable local re-key, `run402 credentials issue --kind <service|anon> --name <n> --import` writes the minted secret straight into the cache.

@@ -221,7 +221,12 @@ export class Credentials {
    * step-up, because there is nobody to prompt; what it hands back expires, so
    * it cannot become a durable root.
    *
-   * Defaults to `service` — the kind an agent needs to deploy.
+   * Defaults to `service`, which has developer parity on the project, so it is
+   * minted only for a developer-or-higher member or a grant key whose scope and
+   * grant are both `*`. A narrower key or grant gets `403 FORBIDDEN`
+   * (`details.required_capability: "*"`) and may mint `{ kind: "anon" }`
+   * instead; it uses the key itself on the routes its scope covers (deploy
+   * authorizes with the wallet, session or grant key, not a minted token).
    */
   async mintToken(
     projectId: string,
