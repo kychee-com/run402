@@ -788,7 +788,7 @@ describe("createVaultHttpTransport — edge_url from the wire response reaches e
     assert.deepEqual(fetchCalls, ["https://origin.example/urlpack"], "the inline pack never dialed the object store");
   });
 
-  it("getState combines `since` and `restore` on the wire — orthogonal query params (vault-restore-recipe design D2)", async () => {
+  it("getState combines `since` and `restore` on the wire — orthogonal query params (vault-restore-recipe D-vault-19)", async () => {
     const { client } = fakeClient({
       requestResponses: {
         [`/vaults/v1/${REPO}/state?since=0000000000000001&restore=1`]: {

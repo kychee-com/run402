@@ -663,7 +663,7 @@ async function main(argv, { onBackgroundWork } = {}) {
         fetchMarker = null;
       }
     }
-    // vault-restore-recipe design D2/D6: a marker-absent fetch target is,
+    // vault-restore-recipe D-vault-19, D-vault-client-surface-21: a marker-absent fetch target is,
     // by construction, the WHOLESALE restore shape (a fresh `git clone`, or
     // a target that never completed a restore) — declare restore intent
     // here so a capable gateway's plan rides THIS state read, reused by

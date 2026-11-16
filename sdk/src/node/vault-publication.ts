@@ -1108,7 +1108,7 @@ export interface VaultTransport extends VaultCreationTransport {
    * other stored byte: consumers hash-check before use, and a failed check
    * is a plain miss that the ordinary reads absorb.
    *
-   * `restore` (vault-restore-recipe design D2), ORTHOGONAL to `since` —
+   * `restore` (vault-restore-recipe D-vault-19), ORTHOGONAL to `since` —
    * declares restore intent. A gateway that recognizes it AND can locate a
    * checkpoint boundary within its own bound MAY answer with `restore_plan`
    * (the heads from that boundary to newest, the boundary checkpoint's
@@ -1443,7 +1443,7 @@ export interface VaultState {
 }
 
 /**
- * The state read's restore recipe (vault-restore-recipe design D1-D5):
+ * The state read's restore recipe (vault-restore-recipe D-vault-18 to D-vault-21, D-vault-client-surface-20):
  * the heads from the newest checkpoint boundary through the caller's own
  * newest generation (ascending, boundary-first — ONE entry when the
  * boundary IS the newest head), that boundary's checkpoint claim set +
@@ -1973,7 +1973,7 @@ export function createVaultHttpTransport(client: Client, options: VaultHttpTrans
         delta = null;
       }
     }
-    // Restore-plan decode (vault-restore-recipe design D1-D5): the SAME
+    // Restore-plan decode (vault-restore-recipe D-vault-18 to D-vault-21, D-vault-client-surface-20): the SAME
     // forgiving posture as `delta` above — ANY structural or resolution
     // anomaly drops the whole plan, never throws, so a hiccup fetching one
     // above-cap pack never fails the state read itself (head/carriers/delta
@@ -2947,7 +2947,7 @@ export class Vault {
    */
   private stateDeltaPacks: Map<string, Uint8Array> | null = null;
   /**
-   * The state read's restore plan (vault-restore-recipe design D1-D5),
+   * The state read's restore plan (vault-restore-recipe D-vault-18 to D-vault-21, D-vault-client-surface-20),
    * stashed RAW — never verified at stash time, unlike `stateDeltaPacks`
    * (whose heads self-check before entering the shared keystore cache): a
    * plan's heads/checkpoint/packs are only ever verified by {@link
@@ -3405,7 +3405,7 @@ export class Vault {
     // that is generations behind — exactly the multi-checkout shape the
     // bench runs.
     //
-    // `restore` (vault-restore-recipe design D2/D6) rides the SAME state
+    // `restore` (vault-restore-recipe D-vault-19, D-vault-client-surface-21) rides the SAME state
     // read — never a second round trip — so the caller (`restoreObjectsInto`,
     // via `materialize`/`verifyToNewest`) declares it only on the wholesale
     // shape (see that method's own doc comment). This call declining the
@@ -6296,7 +6296,7 @@ export class Vault {
     const marker = await readVaultRestoreMarker(targetRepoDir);
     const markerMatches = (a: VaultRestoreMarker | null, b: VaultRestoreMarker | null): boolean =>
       a === null ? b === null : b !== null && a.generation === b.generation && a.head_sha256 === b.head_sha256;
-    // vault-restore-recipe design D2/D6: a marker-absent materialize is,
+    // vault-restore-recipe D-vault-19, D-vault-client-surface-21: a marker-absent materialize is,
     // by construction, the wholesale shape (a fresh target has nothing to
     // replay incrementally) — declare restore intent here so a capable
     // gateway's plan rides THIS read rather than a second one. Mirrors the
@@ -6324,7 +6324,7 @@ export class Vault {
       return { refs: newest.refs, head_target: newest.head_target, generation: newest.generation, retained_refs };
     }
 
-    // vault-restore-recipe (design D1-D6): consume a plan that already
+    // vault-restore-recipe (D-vault-18 to D-vault-21, D-vault-client-surface-20/21): consume a plan that already
     // rode this method's OWN materialize() (the `restore: true` request
     // above, or the reused list-phase read) BEFORE paying for the backward
     // walk below at all. `tryConsumeRestorePlan` verifies from scratch and
@@ -6401,7 +6401,7 @@ export class Vault {
         incremental = false;
         heads.length = 0;
         cur = newest.head;
-        // vault-restore-recipe (design D1/D2, task 2.1's named fallback
+        // vault-restore-recipe (D-vault-18/19, task 2.1's named fallback
         // shape): the marker WAS present when this method's own materialize()
         // ran, so `restore` was never declared and no plan rode that read —
         // fetch one now, dedicated, before falling through to the ordinary
@@ -6771,7 +6771,7 @@ export class Vault {
   }
 
   /**
-   * Consume a stashed restore plan (vault-restore-recipe design D1-D6):
+   * Consume a stashed restore plan (vault-restore-recipe D-vault-18 to D-vault-21, D-vault-client-surface-20/21):
    * verify it ({@link verifyRestorePlan}) and, on success, apply it via the
    * SAME shared tail the backward walk uses ({@link applyRestoreHeads}) —
    * `null` on absence or ANY verification failure, the caller's cue to run
