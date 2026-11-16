@@ -177,7 +177,7 @@ export function unwrapMemberRecoveryBundle(input: {
       continue;
     }
     // Validity is proven at use: FULL public key comparison, never the
-    // truncated fingerprint alone (round-1 finding 2).
+    // truncated fingerprint alone (D-vault-recovery-custody-1).
     const derived = x25519.getPublicKey(scalar);
     if (bytesToHex(derived) !== bytesToHex(publishedPublicKey)) {
       fail("RECOVERY_BUNDLE_INVALID", `wrapper ${w.wrapper_id} opened but its scalar does not derive the bundle's published member public key — the bundle is internally inconsistent`, context, { wrapper_id: w.wrapper_id });
