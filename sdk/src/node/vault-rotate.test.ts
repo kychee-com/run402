@@ -447,7 +447,7 @@ describe("epoch rotation — producer end-to-end (rotateEpochForKeyRevocation)",
     }
   });
 
-  // vault-multi-writer D6 / human-envelopes D5: a membership removal is
+  // vault-multi-writer D6 / D-vault-human-envelopes-5: a membership removal is
   // completed by the SURVIVORS with no declaration and no owner step-up —
   // the removal already advanced the org counters, the envelope-recipients
   // read carries them, and reason:"member_removed" is writer-capable. A

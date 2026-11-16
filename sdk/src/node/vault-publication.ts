@@ -3028,7 +3028,7 @@ export class Vault {
    *      SIGNED allocation record — `platform_attested`, never `receipt`
    *      (the platform serves both sides of that comparison; a substituted
    *      genesis needs a substituted allocation, which the org's owners can
-   *      see — TOFU + audit, human-envelopes D4's tier);
+   *      see — TOFU + audit, D-vault-human-envelopes-4's tier);
    *   3. the envelope-recipients read says whether THIS fingerprint is
    *      covered — if not, `VAULT_ENVELOPE_PENDING` names the key-holders
    *      who can fulfil and the exact next actions (never a terminal error:
@@ -5011,7 +5011,7 @@ export class Vault {
           force_checkpoint: options.checkpoint === true, cutoff: options.cutoff ?? null, capture_binding: options.capture_binding,
         });
       } catch (e) {
-        // vault-human-envelopes D5 ("Remove: next capture rotates the
+        // D-vault-human-envelopes-5 ("Remove: next capture rotates the
         // epoch key to the remaining set") / vault-multi-writer D6: an
         // outstanding MEMBERSHIP REMOVAL is completed by the next push of any
         // surviving writer — rotate under the writer-capable

@@ -154,7 +154,7 @@ export interface VaultRepoFile {
   object_store_origins?: string[];
   /**
    * TOFU pins for {@link Vault.reconcileEnvelopeRecipients}
-   * (vault-human-envelopes design D4 point 3): `principal_id ->` the
+   * (D-vault-human-envelopes-4 point 3): `principal_id ->` the
    * `ek_` fingerprint this repo last wrapped a `key_envelope` for (or
    * observed already covering the vault). A later reconcile whose org
    * directory reports a DIFFERENT fingerprint for the same `principal_id`

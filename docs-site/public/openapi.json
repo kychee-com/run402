@@ -3319,7 +3319,7 @@
         ],
         "summary": "Read the org's encryption-key directory",
         "operationId": "listOrgEncryptionKeys",
-        "description": "The org's directory of envelope-capable principals (vault-human-envelopes design D7): every active human member with a published key. Readable by any active member; an admin key reads too. Public-key material only — reads stay authorized to avoid a directory-harvest surface.",
+        "description": "The org's directory of envelope-capable principals (D-vault-human-envelopes-7): every active human member with a published key. Readable by any active member; an admin key reads too. Public-key material only — reads stay authorized to avoid a directory-harvest surface.",
         "security": [
           {
             "walletAuth": []
