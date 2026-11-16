@@ -6,7 +6,7 @@
  */
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { prewarmVaultConnection, kickVaultConnection, predialVaultObjectStore, prewarmDeps } from "./vault-prewarm.js";
+import { prewarmVaultConnection, kickVaultConnection, predialVaultObjectStore, predialVaultObjectStoreForProject, prewarmDeps } from "./vault-prewarm.js";
 
 const flush = () => new Promise((r) => setImmediate(() => setImmediate(r)));
 
@@ -241,5 +241,51 @@ describe("predialVaultObjectStore", () => {
     predialVaultObjectStore("src_" + "1".repeat(32));
     await flush();
     assert.equal(fetched.length, 3);
+  });
+});
+
+// vault-object-host-predial task 2.3 — the fresh-target case: no git-config
+// pin, so the addressed repo resolves offline from the keystore's own
+// project→repo match, then predials exactly as the pinned path does.
+describe("predialVaultObjectStoreForProject", () => {
+  let fetched: string[] = [];
+
+  beforeEach(async () => {
+    await flush();
+    fetched = [];
+    prewarmDeps.fetch = (async (input: RequestInfo | URL) => {
+      fetched.push(String(input));
+      return { body: { cancel: async () => {} } } as unknown as Response;
+    }) as typeof globalThis.fetch;
+  });
+
+  it("a keystore-known project predials its repo's persisted origins", async () => {
+    let seen: unknown[] = [];
+    prewarmDeps.findRepoIdByProject = (projectId, orgId, root) => {
+      seen = [projectId, orgId, root];
+      return "src_" + "3".repeat(32);
+    };
+    prewarmDeps.readObjectStoreOrigins = (repoId) => (repoId === "src_" + "3".repeat(32) ? ["https://bucket.s3.amazonaws.com"] : []);
+    predialVaultObjectStoreForProject("prj_1", "org-1", "/tmp/root");
+    await flush();
+    assert.deepEqual(seen, ["prj_1", "org-1", "/tmp/root"]);
+    assert.deepEqual(fetched, ["https://bucket.s3.amazonaws.com/"]);
+  });
+
+  it("a project the keystore does not know predials nothing", async () => {
+    prewarmDeps.findRepoIdByProject = () => null;
+    prewarmDeps.readObjectStoreOrigins = () => ["https://bucket.s3.amazonaws.com"];
+    predialVaultObjectStoreForProject("prj_unknown");
+    await flush();
+    assert.equal(fetched.length, 0);
+  });
+
+  it("a throwing keystore scan is swallowed and returns void", () => {
+    prewarmDeps.findRepoIdByProject = () => {
+      throw new Error("corrupt keystore");
+    };
+    const out = predialVaultObjectStoreForProject("prj_1") as unknown;
+    assert.equal(out, undefined);
+    assert.equal(fetched.length, 0);
   });
 });

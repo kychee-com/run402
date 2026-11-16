@@ -1500,7 +1500,7 @@ export interface VaultHttpTransportOptions {
    */
   byoBackend?: (repoId: string) => VaultMirrorBackend | null;
   /**
-   * vault-object-host-predial (design D1, task 1.2): called with the
+   * vault-object-host-predial (D-vault-client-surface-9, task 1.2): called with the
    * ORIGIN(s) (`scheme://host`) of an object-store URL this transport just
    * completed a round trip against — the presigned `url`'s origin, and the
    * `edge_url`'s origin too when the target carried one, regardless of

@@ -145,7 +145,7 @@ const configModP = import("./config.mjs");
 const { getSdk } = await sdkModP;
 const { resolveWalletCore, enforceWalletExistsCore, WalletSelectionError } = await walletModP;
 const { vaultRemoteAddressForm, vaultSlugReleasedInfo, parseVaultRemoteUrl, vaultDegradedReadNote } = await isoModP;
-const { VAULT_R402_REF_NAMESPACE, hardenedGit, resolveGitInvocationRepo, readPinnedVaultRepo, pinVaultRepo, readVaultRestoreMarker, readVaultAutoGcThreshold, predialVaultObjectStore } = await nodeModP;
+const { VAULT_R402_REF_NAMESPACE, hardenedGit, resolveGitInvocationRepo, readPinnedVaultRepo, pinVaultRepo, readVaultRestoreMarker, readVaultAutoGcThreshold, predialVaultObjectStore, predialVaultObjectStoreForProject } = await nodeModP;
 const { walletFile, projectCredentialsFile, profileStateFile } = await configModP;
 
 /**
@@ -321,6 +321,17 @@ function resolveRemoteAddress(argv) {
   return null;
 }
 
+/**
+ * The id-form address git's argv names, or `null` (no address, or a slug
+ * that names no project id). The resident daemon's session-accept predial
+ * (vault-object-host-predial task 2.3) uses it to find a fresh clone
+ * target's repo in the keystore before the session module takes over.
+ */
+export function idFormRemoteAddress(argv) {
+  const address = resolveRemoteAddress(Array.isArray(argv) ? argv : []);
+  return address && vaultRemoteAddressForm(address) === "id" ? address : null;
+}
+
 /** `[+]<src>:<dst>` — an empty `<src>` is a deletion. */
 function parsePushSpec(spec) {
   const forced = spec.startsWith("+");
@@ -480,16 +491,20 @@ async function main(argv, { onBackgroundWork } = {}) {
       // fallback path — this module IS that fallback; a daemon-forwarded
       // session reaches the same code and gets the same predial for free).
       // The repository is now known OFFLINE (no network read, matching
-      // design D6) — fire-and-forget dial the addressed repo's persisted
+      // D-vault-client-surface-11) — fire-and-forget dial the addressed repo's persisted
       // object-store origin(s), if the local keystore has learned any, so
       // it overlaps the rest of this session's local work exactly like the
       // API-origin prewarm that already raced module load above. A repo
       // with no local pin (never opened here before) or nothing persisted
       // yet predials nothing — never a source of a new failure mode.
+      // Task 2.3: a fresh clone target carries no pin yet (a handoff
+      // `resume` clone always), so an id-form address resolves the repo
+      // from the keystore's own project→repo match instead — still offline.
       void (async () => {
         try {
           const pinned = await readPinnedVaultRepo(resolvedRepo.repo_dir);
           if (pinned) predialVaultObjectStore(pinned.repo_id);
+          else if (addressForm === "id") predialVaultObjectStoreForProject(address.project_id, address.org_id);
         } catch {
           /* best-effort: must never surface from repository resolution */
         }

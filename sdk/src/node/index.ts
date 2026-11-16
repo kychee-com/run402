@@ -776,7 +776,7 @@ export type { PushToCreateVaultOptions, PushToCreateVaultResult } from "./vault-
 // orchestrator `Repos.resolveOrCreateAddress` delegates to.
 export { readPinnedVaultRepo, pinVaultRepo, resolveVaultAddress, pinRoomBinding, readPinnedRoomBinding } from "./vault-address.js";
 export type { VaultPinnedRepo, VaultAddressResolution, ResolveVaultAddressOptions } from "./vault-address.js";
-export { prewarmVaultConnection, predialVaultObjectStore } from "./vault-prewarm.js";
+export { prewarmVaultConnection, predialVaultObjectStore, predialVaultObjectStoreForProject } from "./vault-prewarm.js";
 // vault cross-profile repo-key scan — shared by
 // every keystore-miss enrichment point; see the module doc for why this is
 // a directory/filename read, never key material.

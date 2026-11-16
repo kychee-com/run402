@@ -1651,7 +1651,7 @@ export class Repos {
     const [{ Vault, createVaultHttpTransport }, { VaultKeystore }] = await Promise.all([this.#publication(), this.#keystore()]);
     const repoId = await this.#resolveRepoId(options);
     const keystore = new VaultKeystore(options.keystore_root !== undefined ? { rootDir: options.keystore_root } : {});
-    // vault-object-host-predial (design D1, task 1.2): this is the ONE
+    // vault-object-host-predial (D-vault-client-surface-9, task 1.2): this is the ONE
     // transport whose object reads back the returned handle's vault, so
     // wiring the origin-observation hook here (and nowhere else `open()`
     // is reached from — `openOrCreate`'s own allocation-only transport

@@ -137,7 +137,7 @@ export interface VaultRepoFile {
    */
   checkpoint_covers_through?: string | null;
   /**
-   * vault-object-host-predial (design D1): the object-store ORIGINS
+   * vault-object-host-predial (D-vault-client-surface-9): the object-store ORIGINS
    * (`scheme://host` — never a path, query, key, or credential) this
    * checkout has observed a presigned or edge URL actually served bytes
    * from, most-recently-observed first, deduped, capped at
@@ -290,7 +290,7 @@ const FILE_MODE = 0o600;
 /** The local object cache's recency window (design D3: "genesis + newest N=8 heads + newest carriers"). */
 export const VAULT_OBJECT_CACHE_WINDOW = 8;
 
-/** vault-object-host-predial (design D1): the max persisted object-store origins per repo — small on purpose, this is a predial hint, not an inventory. */
+/** vault-object-host-predial (D-vault-client-surface-9): the max persisted object-store origins per repo — small on purpose, this is a predial hint, not an inventory. */
 export const VAULT_OBJECT_STORE_ORIGINS_CAP = 4;
 
 /** Bare hex16 generation comparison for cache eviction — deliberately NOT `generationToBigInt` (vault-publication.ts), which this lower-level module must not import (publication already imports FROM here). Malformed input sorts as "evict" rather than throwing: a corrupt cache entry should never block eviction of everything else. */
@@ -676,7 +676,7 @@ export class VaultKeystore {
   }
 
   /**
-   * vault-object-host-predial (design D1/D4, task 1.2): record that
+   * vault-object-host-predial (D-vault-client-surface-9/12, task 1.2): record that
    * `origins` (already-normalized `scheme://host` strings) were observed
    * serving THIS repo's objects — the transport's write-through-on-change
    * hook. Most-recently-observed wins ties over anything already recorded;

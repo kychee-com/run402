@@ -54,6 +54,13 @@ export const prewarmDeps: {
    * implementation is a plain, synchronous `VaultKeystore.readRepo`.
    */
   readObjectStoreOrigins: (repoId: string, keystoreRoot?: string) => string[];
+  /**
+   * vault-object-host-predial (task 2.3): the repo the keystore holds for a
+   * project (`VaultKeystore.findRepoByProject`, org mismatch = miss), or
+   * `null` for "not known here" — never thrown. Injectable like the origin
+   * lookup above.
+   */
+  findRepoIdByProject: (projectId: string, orgId?: string, keystoreRoot?: string) => string | null;
 } = {
   // The OWNED dispatcher, deliberately (vault-owned-dispatcher D5): the
   // warmed socket must land in the exact pool the verb's first request
@@ -83,6 +90,14 @@ export const prewarmDeps: {
       return keystore.readRepo(repoId)?.object_store_origins ?? [];
     } catch {
       return [];
+    }
+  },
+  findRepoIdByProject: (projectId, orgId, keystoreRoot) => {
+    try {
+      const keystore = new VaultKeystore(keystoreRoot !== undefined ? { rootDir: keystoreRoot } : {});
+      return keystore.findRepoByProject(projectId, orgId)?.repo_id ?? null;
+    } catch {
+      return null;
     }
   },
 };
@@ -138,7 +153,7 @@ export function prewarmVaultConnection(apiBase?: string): void {
 }
 
 /**
- * vault-object-host-predial (design D2/D4, task 2.1): fire-and-forget,
+ * vault-object-host-predial (D-vault-client-surface-10/12, task 2.1): fire-and-forget,
  * dial-only connection establishment to a repo's PERSISTED object-store
  * origin(s) — the presigned/edge host(s) an earlier session in this
  * checkout already fetched objects from (recorded via
@@ -154,7 +169,7 @@ export function prewarmVaultConnection(apiBase?: string): void {
  *
  * A repo with nothing persisted (first-ever session, or a keystore read
  * failure) predials nothing — there is deliberately no fallback guess and
- * no network read to learn where to predial (design D4/D6). Dialing an
+ * no network read to learn where to predial (D-vault-client-surface-11/12). Dialing an
  * origin that no longer serves this vault's objects (a bucket migration)
  * costs one harmless background round trip; the next observed fetch
  * overwrites the persisted hint.
@@ -181,5 +196,27 @@ export function predialVaultObjectStore(repoId: string, keystoreRoot?: string): 
     }
   } catch {
     /* the whole predial is best-effort — nothing here can affect a verb */
+  }
+}
+
+/**
+ * vault-object-host-predial task 2.3 — the fresh-target case. A clone's
+ * target directory carries no git-config pin yet (and the in-process
+ * `RUN402_DAEMON=0` helper a handoff `resume` spawns is always such a
+ * clone), so the pin-keyed trigger above predials nothing there. This
+ * resolves the addressed repo OFFLINE from the keystore's own project→repo
+ * match instead — the same `findRepoByProject` lookup id-form address
+ * resolution uses (vault-offline-clone-resolve D1) — and predials its
+ * persisted origins under exactly the same terms: never awaited, every
+ * failure swallowed, a project the keystore does not know predials nothing,
+ * and never a network read to learn where to dial. Callers pass an id-form
+ * address only; a slug names no project id the keystore could match.
+ */
+export function predialVaultObjectStoreForProject(projectId: string, orgId?: string, keystoreRoot?: string): void {
+  try {
+    const repoId = prewarmDeps.findRepoIdByProject(projectId, orgId, keystoreRoot);
+    if (repoId) predialVaultObjectStore(repoId, keystoreRoot);
+  } catch {
+    /* best-effort: a keystore scan failure must never reach a verb */
   }
 }

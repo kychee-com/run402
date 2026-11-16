@@ -53,14 +53,14 @@ export async function runDaemon() {
   // Load the heavy module ONCE — this is the entire point of residency.
   // Its top-level await pulls the SDK graph; the prewarm dials the API
   // origin so the first forwarded session rides a warm h2 connection.
-  const { prewarmVaultConnection, kickVaultConnection, predialVaultObjectStore } = await import("../sdk/dist/node/vault-prewarm.js");
+  const { prewarmVaultConnection, kickVaultConnection, predialVaultObjectStore, predialVaultObjectStoreForProject } = await import("../sdk/dist/node/vault-prewarm.js");
   prewarmVaultConnection();
-  const { runHelperSession } = await import("./remote-helper-session.mjs");
+  const { runHelperSession, idFormRemoteAddress } = await import("./remote-helper-session.mjs");
   // vault-object-host-predial task 2.2 — narrow, session-scoped imports
   // (not the whole `#sdk/node` barrel) for the OFFLINE repo resolution the
   // session-accept predial needs: a local git subprocess (`rev-parse
   // --absolute-git-dir`) plus a local git-config read, never a network
-  // call (design D6).
+  // call (D-vault-client-surface-11).
   const { resolveGitInvocationRepo } = await import("../sdk/dist/node/vault-snapshot.js");
   const { readPinnedVaultRepo } = await import("../sdk/dist/node/vault-address.js");
 
@@ -202,13 +202,19 @@ export async function runDaemon() {
           // --absolute-git-dir`) then `readPinnedVaultRepo` (a local
           // `git config --local` read). Any resolution failure (no
           // `GIT_DIR`, not a repository, no pin yet) predials nothing —
-          // never a network read to learn where to predial (design D6),
+          // never a network read to learn where to predial (D-vault-client-surface-11),
           // and never allowed to delay or fail this session's accept.
           void (async () => {
             try {
               const { repo_dir } = await resolveGitInvocationRepo(msg.env ?? {}, msg.cwd);
               const pinned = await readPinnedVaultRepo(repo_dir);
               if (pinned) predialVaultObjectStore(pinned.repo_id);
+              else {
+                // Task 2.3: a fresh clone target has no pin yet — find the
+                // addressed repo in the keystore by its project, offline.
+                const address = idFormRemoteAddress(msg.argv);
+                if (address) predialVaultObjectStoreForProject(address.project_id, address.org_id);
+              }
             } catch {
               /* best-effort: must never surface from session accept */
             }
