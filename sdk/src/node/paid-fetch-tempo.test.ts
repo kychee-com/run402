@@ -1,6 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { X402BalanceError, orderTempoCandidates } from "./paid-fetch.js";
+import { X402BalanceError, guardTempoChallenges, offerNetworks, orderTempoCandidates, paymentNetworkUnsupportedError, withAllowanceRemedies } from "./paid-fetch.js";
+import { PaymentBuyerError } from "../namespaces/pay.js";
+import type { PaymentOffer } from "./payment-offers.js";
 import { TEMPO_MAINNET, TEMPO_MODERATO, type TempoChain } from "./tempo.js";
 
 const ADDRESS = "0x1234567890abcdef1234567890abcdef12345678";
@@ -100,5 +102,86 @@ describe("orderTempoCandidates", () => {
     const ordered = await orderTempoCandidates(other, ADDRESS, async () => { reads++; return 0n; });
     assert.equal(ordered.length, 2);
     assert.equal(reads, 0);
+  });
+});
+
+describe("guardTempoChallenges", () => {
+  const x402Only = () => new Response(JSON.stringify({ code: "PAYMENT_REQUIRED" }), {
+    status: 402,
+    headers: {
+      "PAYMENT-REQUIRED": Buffer.from(JSON.stringify({ accepts: [{ scheme: "exact", network: "eip155:8453" }] })).toString("base64url"),
+    },
+  });
+  const unsupported = (offers: PaymentOffer[]) =>
+    paymentNetworkUnsupportedError(offerNetworks(offers), [TEMPO_MAINNET.network, TEMPO_MODERATO.network], {}, offers, "mpp");
+
+  it("a 402 that offers only x402 is PAYMENT_NETWORK_UNSUPPORTED naming the x402 rail, not a retryable mppx failure", async () => {
+    const guarded = guardTempoChallenges(async () => x402Only(), unsupported);
+    await assert.rejects(guarded("https://api.run402.com/tiers/v1/hobby", { method: "POST" }), (err: unknown) => {
+      assert.ok(err instanceof PaymentBuyerError);
+      const json = err.toJSON() as Record<string, any>;
+      assert.equal(json.code, "PAYMENT_NETWORK_UNSUPPORTED");
+      assert.equal(json.retryable, false);
+      assert.equal(json.details.configured_rail, "mpp");
+      assert.deepEqual(json.details.challenge_networks, ["eip155:8453"]);
+      assert.equal(json.nextActions[0].command, "run402 init x402 --switch-rail");
+      return true;
+    });
+  });
+
+  it("a 402 with a Tempo charge challenge goes to mppx untouched", async () => {
+    const tempo = new Response(null, {
+      status: 402,
+      headers: { "WWW-Authenticate": 'Payment id="c1", method="tempo", intent="charge", request="e30"' },
+    });
+    const guarded = guardTempoChallenges(async () => tempo, unsupported);
+    assert.equal(await guarded("https://api.run402.com/tiers/v1/prototype"), tempo);
+  });
+
+  it("a 402 that offers nothing, and any non-402, pass through", async () => {
+    const bare = new Response("{}", { status: 402 });
+    assert.equal(await guardTempoChallenges(async () => bare, unsupported)("https://x.test/"), bare);
+    const ok = new Response("{}", { status: 200 });
+    assert.equal(await guardTempoChallenges(async () => ok, unsupported)("https://x.test/"), ok);
+  });
+
+  it("the paid retry is never guarded", async () => {
+    const guarded = guardTempoChallenges(async () => x402Only(), unsupported);
+    const res = await guarded("https://x.test/", { headers: { Authorization: "Payment abc" } });
+    assert.equal(res.status, 402);
+  });
+});
+
+describe("withAllowanceRemedies", () => {
+  it("a signed-in mpp buyer of a paid tier sees the allowance shortfall beside the rail switch", async () => {
+    const res = new Response(JSON.stringify({
+      code: "PAYMENT_REQUIRED",
+      allowance: { allowance_usd_micros: 5_000_000, price_usd_micros: 20_000_000, shortfall_usd_micros: 15_000_000 },
+    }), {
+      status: 402,
+      headers: {
+        "PAYMENT-REQUIRED": Buffer.from(JSON.stringify({ accepts: [{ scheme: "exact", network: "eip155:8453" }] })).toString("base64url"),
+      },
+    });
+    const unsupported = (offers: PaymentOffer[], body: Record<string, unknown> | null) => withAllowanceRemedies(
+      paymentNetworkUnsupportedError(offerNetworks(offers), [TEMPO_MAINNET.network, TEMPO_MODERATO.network], {}, offers, "mpp"),
+      body,
+    );
+    await assert.rejects(guardTempoChallenges(async () => res, unsupported)("https://api.run402.com/tiers/v1/team", { method: "POST" }), (err: unknown) => {
+      assert.ok(err instanceof PaymentBuyerError);
+      const json = err.toJSON() as Record<string, any>;
+      assert.equal(json.code, "PAYMENT_NETWORK_UNSUPPORTED");
+      assert.equal(json.retryable, false);
+      assert.deepEqual(json.details.allowance, { allowance_usd_micros: 5_000_000, price_usd_micros: 20_000_000, shortfall_usd_micros: 15_000_000 });
+      assert.equal(json.details.configured_rail, "mpp");
+      assert.deepEqual(json.nextActions.map((a: { type: string }) => a.type), ["run_command", "edit_request", "redeem_voucher", "top_up"]);
+      assert.match(json.message, /\$15\.00 short/);
+      return true;
+    });
+  });
+
+  it("a 402 without an allowance block keeps the plain wrong-rail error", () => {
+    const plain = paymentNetworkUnsupportedError(["eip155:8453"], [], {}, [], "mpp");
+    assert.equal(withAllowanceRemedies(plain, { code: "PAYMENT_REQUIRED" }), plain);
   });
 });

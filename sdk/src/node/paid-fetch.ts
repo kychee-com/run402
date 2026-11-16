@@ -811,6 +811,63 @@ export async function orderTempoCandidates<C extends MppChallengeCandidate>(
 }
 
 /** Reads pathUSD on one Tempo chain through its RPC, with the x402 retry policy. */
+/**
+ * The fetch the MPP rail hands mppx. A 402 that offers payments but no Tempo
+ * charge (a paid tier while Tempo mainnet is down offers x402 only) fails
+ * `PAYMENT_NETWORK_UNSUPPORTED` naming the rail that pays it, where mppx would
+ * throw "No method found", which the kernel reports as a retryable
+ * `NETWORK_ERROR` that never clears. A 402 that offers nothing, and the paid
+ * retry, pass through.
+ */
+export function guardTempoChallenges(
+  baseFetch: typeof globalThis.fetch,
+  unsupported: (offers: PaymentOffer[], challengeBody: Record<string, unknown> | null) => Error,
+): typeof globalThis.fetch {
+  return async (input, init) => {
+    const response = await baseFetch(input, init);
+    if (response.status !== 402) return response;
+    const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+    if (/^Payment\s/i.test(headers.get("Authorization") ?? "")) return response;
+    const offers = paymentOffers(response);
+    if (offers.length === 0) return response;
+    if (offers.some((offer) => offer.protocol === "mpp" && offer.method === "tempo" && offer.intent === "charge")) return response;
+    const parsed: unknown = await response.json().catch(() => null);
+    const challengeBody = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+    throw unsupported(offers, challengeBody);
+  };
+}
+
+/**
+ * A wrong-rail error on a 402 that names the caller's allowance gains the
+ * allowance's numbers and the remedies that need no rail switch (a voucher or
+ * a top-up), after the switch itself.
+ */
+export function withAllowanceRemedies(error: PaymentBuyerError, challengeBody: Record<string, unknown> | null): PaymentBuyerError {
+  const block = challengeBody?.allowance;
+  if (!block || typeof block !== "object") return error;
+  const a = block as Record<string, unknown>;
+  const allowance = Number(a.allowance_usd_micros);
+  const price = Number(a.price_usd_micros);
+  const shortfall = Number(a.shortfall_usd_micros);
+  if (![allowance, price, shortfall].every(Number.isFinite)) return error;
+  const body = (error.body ?? {}) as { details?: Record<string, unknown>; next_actions?: import("../errors.js").NextAction[] };
+  const { funds_moved: _fundsMoved, ...priorDetails } = body.details ?? {};
+  return new PaymentBuyerError({
+    code: error.code,
+    message: `${error.message} The organization's allowance (${formatUsdMicrosExact(allowance)}) is ${formatUsdMicrosExact(shortfall)} short of this (${formatUsdMicrosExact(price)}).`,
+    fundsMoved: false,
+    details: {
+      ...priorDetails,
+      allowance: { allowance_usd_micros: allowance, price_usd_micros: price, shortfall_usd_micros: shortfall },
+    },
+    nextActions: [
+      ...(body.next_actions ?? []),
+      { type: "redeem_voucher", cli: "run402 redeem <code>", why: "A promo code adds to the organization's allowance, which settles a tier with no on-chain payment." },
+      { type: "top_up", why: "Top up the organization's allowance (Lightning or card), then retry." },
+    ],
+  });
+}
+
 async function tempoBalanceReader(address: string): Promise<(chain: TempoChain) => Promise<bigint>> {
   const { createPublicClient, defineChain, http } = await import("viem");
   return (chain) => {
@@ -893,8 +950,19 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
       const stack = await stackLoaders.mpp();
       const account = await resolveWalletAccount(localWallet, { privateKeyToAccount: stack.privateKeyToAccount });
       const readBalance = await tempoBalanceReader(localWallet.address);
+      const unsupported = (offers: PaymentOffer[], challengeBody: Record<string, unknown> | null = null) => withAllowanceRemedies(
+        paymentNetworkUnsupportedError(
+          offerNetworks(offers),
+          TEMPO_CHAINS.map((chain) => chain.network),
+          {},
+          offers,
+          "mpp",
+        ),
+        challengeBody,
+      );
       const mppx = stack.Mppx.create({
         polyfill: false,
+        fetch: guardTempoChallenges(sdkFetch, unsupported),
         methods: [stack.tempo({ account })],
         // Pay the first offered Tempo chain this wallet can cover.
         orderChallenges: (candidates: readonly MppChallengeCandidate[]) =>
@@ -907,13 +975,7 @@ export async function setupPaidFetch(options: PaidFetchOptions = {}): Promise<Co
         payer: localWallet.address,
         baseFetch: sdkFetch,
         fingerprint: paymentRequestFingerprint,
-        unsupported: (offers) => paymentNetworkUnsupportedError(
-          offerNetworks(offers),
-          TEMPO_CHAINS.map((chain) => chain.network),
-          {},
-          offers,
-          "mpp",
-        ),
+        unsupported,
       });
       return withPayer(mppx.fetch, {
         source: resolvedWallet!.source,
@@ -2241,7 +2303,7 @@ function challengeNetworks(response: Response): string[] {
   return offerNetworks(paymentOffers(response));
 }
 
-function offerNetworks(offers: readonly PaymentOffer[]): string[] {
+export function offerNetworks(offers: readonly PaymentOffer[]): string[] {
   return [...new Set(offers.flatMap((offer) => offer.network ? [offer.network] : []))];
 }
 

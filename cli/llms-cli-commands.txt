@@ -59,7 +59,7 @@ Manage multiple named wallets (profiles) on one machine. Keys never leave the ma
 Tier and quotas are per organization (not per project) — `set` is organization-wide, `status.pool_usage` is the pooled total across every project in the organization. `set` refetches status after the call and includes it as `status_after`.
 
 - `run402 tier status`
-- `run402 tier set <prototype|hobby|team>`
+- `run402 tier set <prototype|hobby|team>` — hobby and team take mainnet money only. On the `mpp` rail, a tier whose 402 offers no Tempo charge (while Tempo mainnet is not ready) fails `PAYMENT_NETWORK_UNSUPPORTED` with a `run402 init x402 --switch-rail` next action.
 
 ### credentials
 
