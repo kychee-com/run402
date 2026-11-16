@@ -185,7 +185,7 @@ The deploy result still includes an optional top-level `warnings: string[]` (sib
 Secrets available as `process.env` (see secrets below).
 
 #### Make a function an MCP tool
-Every app is an MCP server at `https://<host>/_run402/mcp`. Export a literal `tool` next to the handler and give the function exactly one exact route that accepts POST:
+Every app is an MCP server at `https://<host>/_run402/mcp`. A tool names one request its function answers, and calling the tool is that request (headers `x-run402-trigger: mcp_tool` and `x-run402-mcp-tool: <name>`), so `requireAuth` / `requireRole`, route prices, your own gate, and logs apply as for a browser. Declare tools beside the handler, as static literals. One tool, named after the function and bound to its one exact `POST` route:
 ```ts
 import type { ToolDeclaration } from "@run402/functions";
 export const tool = {
@@ -194,7 +194,30 @@ export const tool = {
 } satisfies ToolDeclaration;
 export default async (req: Request) => { /* req.json() is the tool arguments */ };
 ```
-A tool call is a POST to that route (header `x-run402-trigger: mcp_tool`), so `requireAuth` / `requireRole`, route prices, and logs apply as for a browser. Tools behind `requireAuth` sign the person in through the app's own hosted sign-in and a consent page; the call then runs as them (`auth.user()`, `db(req)`). The export must be a literal (no variables or calls): the gateway parses it at commit and fails `MCP_TOOL_NOT_STATIC`, `MCP_TOOL_SCHEMA_INVALID`, `MCP_TOOL_ROUTE_MISSING`, `MCP_TOOL_ROUTE_AMBIGUOUS`, or `MCP_TOOL_NAME_INVALID` before any migration runs. After deploy, `urls.mcp` is the connector URL to hand the person. People see and disconnect their connected assistants at `https://<host>/_run402/account/connections` (signed-out visitors go through `site.sign_in_path`), or in your own page with `auth.grants.list()` / `auth.grants.revoke(id)`.
+Several tools in one function, the key as the tool's name (a function can answer many without a function or a route per tool):
+```ts
+export const tools = {
+  list_events: { method: "GET", path: "/api/events", description: "List upcoming events.",
+    input: { type: "object", properties: { limit: { type: "integer" } } } },
+  get_event: { method: "GET", path: "/api/events/{event_id}", description: "Read one event.",
+    input: { type: "object", properties: { event_id: { type: "string" } }, required: ["event_id"] } },
+  create_event: { description: "Create an event.",
+    input: { type: "object", properties: { title: { type: "string" } }, required: ["title"] } },
+};
+export default async (req: Request) => { /* req.headers.get("x-run402-mcp-tool") says which tool */ };
+```
+- `tool` (one declaration) or `tools` (an object whose keys are tool names), never both; a `name` field under `tools` is refused. A single `tool` may state `name`.
+- `description` (1 to 1024 characters) and `input` (a JSON Schema whose root `type` is `"object"`) are required; `title` and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) are optional.
+- `method` is `GET`, `POST`, `PATCH`, `PUT` or `DELETE` (default `POST`). `path` may hold `{param}` segments, each a required `string` or `integer` property of `input`; omitted, the tool is bound to the function's one exact `POST` route. The request must reach the function through one of its routes (exact or prefix) for that method.
+- Path parameters fill the path. On `GET` and `DELETE` the other arguments are the query string; on `POST`, `PATCH` and `PUT` they are the JSON body. A tool with no `path` sends all its arguments as the body.
+- A `GET` tool is listed read-only (`readOnlyHint: true`), which an assistant's "allow read actions" setting acts on; set `annotations: { readOnlyHint: false }` on a `GET` that leaves a mark.
+- A static literal: object, array, string, number, boolean and null literals only. No variable, call, spread, computed key or `${…}` template. `satisfies`, a type annotation and `as const` are fine.
+
+**The release carries the tools, not the source.** `run402 deploy` and `run402 up` read the export by parsing each function's source (never running it) and send it as `functions.<name>.tools` on the release entry, `[]` when the source declares none. The gateway takes a function's tools only from that entry: over raw HTTP you send `functions.<name>.tools` yourself (`[{ name?, method?, path?, description, title?, input, annotations? }]`), and an export in the source means nothing to it. As with `triggers`, a function sent with no `tools` has none, and a function the deploy does not name keeps the ones it has. A manifest that writes `tools` on a function is sent as written and the source is not read. In an Astro app, declare tools in endpoint files instead (`src/pages/api/notes.ts` exporting `GET`/`POST` and `tools`); `astro build` reads them and `run402 deploy --dir dist` puts them on the `ssr` function (see `@run402/astro` "MCP tools").
+
+`run402 deploy --plan` lists what a deploy would do under `diff.tools` (`added`, `removed`, `changed`, by name) before anything is uploaded, and `run402 deploy releases active` shows each function's `tools` with `method` and `path`. A declaration that cannot be carried fails before any request with the file, the line and the field: `MCP_TOOL_NOT_STATIC`, `MCP_TOOL_SCHEMA_INVALID`, `MCP_TOOL_NAME_INVALID`, `MCP_TOOL_NAME_DUPLICATE`, `MCP_TOOL_PATH_UNSUPPORTED`. The gateway checks the binding at the plan and refuses with HTTP 422, `resource` `functions.<function>.tools.<tool>` and an `edit_request` next action: the same codes, plus `MCP_TOOL_ROUTE_MISSING` (no `path` and no exact `POST` route, or nothing answers the request), `MCP_TOOL_ROUTE_AMBIGUOUS` (no `path` and several exact `POST` routes) and `MCP_TOOL_ROUTE_ELSEWHERE` (a static file, a repo target or another function answers it).
+
+Tools behind `requireAuth` / `requireRole` sign the person in through the app's own hosted sign-in and a consent page; the call then runs as them (`auth.user()`, `db(req)`). For any other tool, an anonymous call that your code answers with `401` starts the same sign-in, and with a token a `401` or `403` from your code is the tool's result. After deploy, `urls.mcp` is the connector URL to hand the person. People see and disconnect their connected assistants at `https://<host>/_run402/account/connections` (signed-out visitors go through `site.sign_in_path`), or in your own page with `auth.grants.list()` / `auth.grants.revoke(id)`. To call your own tool from a shell as a test user, with no browser, mint a test session: its bundle carries `mcp: { url, access_token, expires_at }` and `examples.mcp`, a ready-to-run `tools/list` call (`r.auth.createTestSession` in the SDK; needs the project's test mode).
 
 ### secrets
 Injected as `process.env` in functions. Values are write-only — `list` returns keys and timestamps only, never values or value-derived hashes. Prefer `--file` or `--stdin` for real values so they do not land in shell history. `--file -` and `--file /dev/stdin` read stdin too.

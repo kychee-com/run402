@@ -736,6 +736,26 @@ Rules and footnotes:
 - Cache TTL. Default 60s, max 600s. A demoted user keeps the cached role until expiry — for instant revocation, set `cacheTtl: 0` (fresh lookup per request).
 - Gate applies to both routed (`/your/route`) and direct (`POST /functions/v1/:name` with API key) invocation. Direct invocation still requires the API key at the edge; the gate runs after API-key auth, against the user JWT.
 
+### Make a function an MCP tool
+
+Every app is an MCP server at `https://<host>/_run402/mcp`, so a person's own assistant (ChatGPT, Claude, Codex) can use the app as them. Declare the app's tools beside the handler, as static literals:
+
+```ts
+export const tools = {
+  list_events: { method: "GET", path: "/api/events", description: "List upcoming events.",
+    input: { type: "object", properties: { limit: { type: "integer" } } } },
+  create_event: { description: "Create an event.",
+    input: { type: "object", properties: { title: { type: "string" } }, required: ["title"] } },
+};
+export default async (req: Request) => { /* req.headers.get("x-run402-mcp-tool") says which one was called */ };
+```
+
+- `export const tool = { description, input }` declares one, named after the function and bound to its one exact `POST` route. `export const tools = { name: { … } }` declares several; never both.
+- Calling one is the request it names (`method`, default `POST`; `path`, which may hold `{param}` segments): path parameters fill the path, the rest is the query string on `GET` / `DELETE` and the JSON body otherwise. It runs through the function's own route, gates, price and logs, and a `GET` is listed read-only.
+- `run402 deploy` and `run402 up` read the export by parsing the source (never running it) and carry it in the release as `functions.<name>.tools`. The release is the only carrier: over raw HTTP you send `functions.<name>.tools` yourself, and an export in the source means nothing to the gateway. A function sent with no tools has none.
+- A value that is not a literal (a variable, a call, a spread, a `${…}` template) fails before any request with `MCP_TOOL_NOT_STATIC`, the file and the line. `run402 deploy --plan` shows `diff.tools` before anything is uploaded, and after the deploy `urls.mcp` is the URL to hand the person.
+- In an Astro app, declare them in an endpoint file (`src/pages/api/notes.ts` exporting `GET` / `POST`) and `astro build` reads them. Full rules and error codes: [functions reference](https://docs.run402.com/llms-cli-functions.txt).
+
 ### Astro SSR runtime + ISR cache
 
 For Astro apps, scaffold with `run402 init astro` (sets up `astro.config.mjs` with the `@run402/astro` 1.0+ preset, `[slug].astro` SSR template wired to the DB, layouts, `.env.example`). Run `run402 dev` to start `astro dev` with project credentials in scope.

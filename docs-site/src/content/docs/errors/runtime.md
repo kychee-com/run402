@@ -121,7 +121,7 @@ An unsupported middleware pattern was detected. Inspect the diagnostic and use t
 
 <h2 id="R402_ASTRO_SDK_VERSION_TOO_OLD">R402_ASTRO_SDK_VERSION_TOO_OLD</h2>
 
-Owner: `public:astro/src/release-slice.ts`.
+Owner: `public:astro/src/endpoint-tools.ts`, `public:astro/src/release-slice.ts`.
 
 The adapter or runtime reported this diagnostic. Inspect its message, source location and suggested fix; check the installed package version and supported features. Correct the named input or request-context usage before rebuilding or deploying.
 

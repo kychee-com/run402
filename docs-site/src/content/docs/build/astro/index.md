@@ -27,6 +27,25 @@ The native component API includes `SignIn`, `SignUp`, `UserButton`, `AccountSecu
 
 Use caller-context `db()` for app data subject to row policies. Reserve `adminDb()` for deliberately privileged backend work. Keep full AssetRef objects in data rows when rendering uploaded variants. `Run402Picture` and `Run402Image` consume those references; dynamic source scanning is not a substitute for stored variant metadata. A private image's AssetRef has every URL `null`: pass it through `signAssetRef(ref, assets.signMany)` from `@run402/astro/manifest` (with `assets` from `@run402/functions`), or a page of them through `signAssetRefs(refs, assets.signMany)`, one request for every URL, and render the result; the page then holds short-lived URLs, so render it per request.
 
+## Endpoints as MCP tools
+
+Every app is an MCP server at `https://<host>/_run402/mcp`, so the assistant of someone who uses your site can act in it as them. Declare what it may call in the endpoint file that already answers the request:
+
+```ts
+// src/pages/api/notes.ts
+import type { APIRoute } from "astro";
+
+export const tools = {
+  list_notes: { method: "GET", description: "List the signed-in person's notes.", input: { type: "object", properties: { limit: { type: "integer" } } } },
+  add_note: { method: "POST", description: "Add a note for the signed-in person.", input: { type: "object", properties: { title: { type: "string" } }, required: ["title"] } },
+};
+
+export const GET: APIRoute = async ({ url }) => Response.json({ limit: url.searchParams.get("limit") });
+export const POST: APIRoute = async ({ request }) => Response.json(await request.json(), { status: 201 });
+```
+
+A call is the request the site itself sends, so it runs `src/middleware.ts` and the handler as the signed-in person; there is no second function and no second copy of the gate. The path is the endpoint's own route (`[param]` becomes `{param}`), a `GET` is listed read-only, and an endpoint with one handler can use `export const tool = { name, description, input }`. `astro build` reads the declaration by parsing the file, never by running it, so every value is a literal, and a prerendered endpoint cannot carry one (`MCP_TOOL_ROUTE_ELSEWHERE`: a static file answers its path). `run402 up --plan` lists the result under `diff.tools`. The [package README](https://github.com/kychee-com/run402/tree/main/astro) has the full rules under "MCP tools".
+
 ## Cache and secrets
 
 ISR caching is opt-in through supported response headers. Authentication, cookies and unsupported vary dimensions affect cacheability; inspect the returned reason rather than assuming every response caches. Invalidation does not grant read access.

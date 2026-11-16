@@ -683,6 +683,60 @@ Owner: `public:cli/lib/repos.mjs`.
 
 The client could not complete this operation. Inspect its typed error kind, message, input fields and next actions. Local preflight, authentication, transport and ambiguous mutation outcomes need different repairs; do not infer that no remote operation occurred merely because the error was rendered by a client.
 
+<h2 id="MCP_TOOL_NAME_DUPLICATE">MCP_TOOL_NAME_DUPLICATE</h2>
+
+Owner: `public:astro/src/endpoint-tools.ts`, `public:sdk/src/namespaces/deploy.ts`.
+
+Two tools share a name. Tool names are unique in a release. Raised before any request when two functions of one spec, two keys of one `tools`, or two endpoint files of one Astro build declare the same name (`details.functions` or the message names both), and by the gateway at the plan (HTTP 422) when the name collides with a function the deploy does not touch. A tool with no `name` takes its function's name.
+
+**Suggested fix:** rename one of the two tools.
+
+
+<h2 id="MCP_TOOL_NAME_INVALID">MCP_TOOL_NAME_INVALID</h2>
+
+Owner: `public:sdk/src/node/tool-declarations.ts`.
+
+A tool's name is not a valid MCP tool name (1 to 128 of `A-Z`, `a-z`, `0-9`, `_`, `-`, `.`). Under `tools` the name is the key; a single `tool` states it with `name`. A function file's `tool` with no `name` is named after its function, so the function name has to be valid too; an Astro endpoint's `tool` has no default and must state `name`.
+
+**Suggested fix:** rename the key, or add `name: "…"` to the declaration.
+
+
+<h2 id="MCP_TOOL_NOT_STATIC">MCP_TOOL_NOT_STATIC</h2>
+
+Owner: `public:sdk/src/node/tool-declarations.ts`.
+
+A tool declaration (`export const tool = { … }` or `export const tools = { name: { … } }` beside a handler) holds something that is not a literal: a variable, a function call, a spread, a computed key or a `${…}` template substitution. The same code covers an export that is reassigned, is a function or a class, or is re-exported from another module, and a file that cannot be parsed. Deploy tooling reads the declaration by parsing the source and never runs it, so every value has to be written out. `run402 deploy`, `run402 up` and `astro build` raise it before any request, with `details.file`, `details.line` (when the line is exact) and `details.field_path`; the gateway raises it at the plan (HTTP 422) for `functions.<name>.tools` sent as data.
+
+**Suggested fix:** write the value inline at the named line. `satisfies`, a type annotation and `as const` are fine; a schema fragment shared by two tools has to be written in both.
+
+
+<h2 id="MCP_TOOL_PATH_UNSUPPORTED">MCP_TOOL_PATH_UNSUPPORTED</h2>
+
+Owner: `public:sdk/src/function-tools.ts`, `public:sdk/src/node/tool-declarations.ts`.
+
+A tool's path has a segment that cannot be filled from the tool's arguments: a wildcard (`*`), a rest segment (`{...rest}`, or `[...rest]` in an Astro route), or a parameter that is only part of a segment (`post-{id}`, `post-[id]`). A tool names one request, and each `{param}` stands for one whole path segment.
+
+**Suggested fix:** declare the tool on a path whose parameters are whole segments, such as `/api/notes/{note_id}` (`src/pages/api/notes/[note_id].ts`).
+
+
+<h2 id="MCP_TOOL_ROUTE_ELSEWHERE">MCP_TOOL_ROUTE_ELSEWHERE</h2>
+
+Owner: `public:sdk/src/node/tool-declarations.ts`.
+
+The request a tool names would not reach its function. At `astro build`: the endpoint is prerendered, so Astro writes its response to a static file and that file answers the path. At the plan (HTTP 422): a static file, a repo route target or another function answers the tool's method and path.
+
+**Suggested fix:** serve the endpoint on request (`export const prerender = false`), or declare the tool on the function or endpoint that does answer the request.
+
+
+<h2 id="MCP_TOOL_SCHEMA_INVALID">MCP_TOOL_SCHEMA_INVALID</h2>
+
+Owner: `public:sdk/src/function-tools.ts`.
+
+A tool declaration has the wrong shape: `description` is missing, empty or over 1024 characters; `input` is missing or its root `type` is not `"object"`; a file exports both `tool` and `tools`; an entry under `tools` carries `name` (the key is the name); a field, an annotation or a `method` is not one the declaration knows (`method` is `GET`, `POST`, `PATCH`, `PUT` or `DELETE`); a `{param}` of the path is not a required `string` or `integer` property of `input`. In an Astro endpoint file also: `path` is written (it is the endpoint's own route), the stated `method` is one the file does not export, or the file exports several handlers (or `ALL`) and the tool states no `method`. Raised before any request by `run402 deploy`, `run402 up` and `astro build` with the file, line and `details.field_path`, and by the gateway at the plan (HTTP 422) with `resource` `functions.<function>.tools.<tool>`.
+
+**Suggested fix:** fix the field `details.field_path` names, then build or deploy again.
+
+
 <h2 id="MERCHANT_RECEIPT_REQUIRED">MERCHANT_RECEIPT_REQUIRED</h2>
 
 Owner: `public:sdk/src/namespaces/pay.ts`.

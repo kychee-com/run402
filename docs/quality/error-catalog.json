@@ -4041,6 +4041,94 @@
       "topic": "/errors/gateway/#MAX_EPOCH_ROTATION_ENVELOPES_EXCEEDED"
     },
     {
+      "code": "MCP_TOOL_NAME_DUPLICATE",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "astro/src/endpoint-tools.ts"
+        },
+        {
+          "owner": "public",
+          "source": "sdk/src/namespaces/deploy.ts"
+        }
+      ],
+      "topic": "/errors/client/#MCP_TOOL_NAME_DUPLICATE"
+    },
+    {
+      "code": "MCP_TOOL_NAME_INVALID",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/tool-declarations.ts"
+        }
+      ],
+      "topic": "/errors/client/#MCP_TOOL_NAME_INVALID"
+    },
+    {
+      "code": "MCP_TOOL_NOT_STATIC",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/tool-declarations.ts"
+        }
+      ],
+      "topic": "/errors/client/#MCP_TOOL_NOT_STATIC"
+    },
+    {
+      "code": "MCP_TOOL_PATH_UNSUPPORTED",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/function-tools.ts"
+        },
+        {
+          "owner": "public",
+          "source": "sdk/src/node/tool-declarations.ts"
+        }
+      ],
+      "topic": "/errors/client/#MCP_TOOL_PATH_UNSUPPORTED"
+    },
+    {
+      "code": "MCP_TOOL_ROUTE_AMBIGUOUS",
+      "owners": [
+        {
+          "owner": "compatibility",
+          "source": "reference/error-codes"
+        }
+      ],
+      "topic": "/errors/gateway/#MCP_TOOL_ROUTE_AMBIGUOUS"
+    },
+    {
+      "code": "MCP_TOOL_ROUTE_ELSEWHERE",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/node/tool-declarations.ts"
+        }
+      ],
+      "topic": "/errors/client/#MCP_TOOL_ROUTE_ELSEWHERE"
+    },
+    {
+      "code": "MCP_TOOL_ROUTE_MISSING",
+      "owners": [
+        {
+          "owner": "compatibility",
+          "source": "reference/error-codes"
+        }
+      ],
+      "topic": "/errors/gateway/#MCP_TOOL_ROUTE_MISSING"
+    },
+    {
+      "code": "MCP_TOOL_SCHEMA_INVALID",
+      "owners": [
+        {
+          "owner": "public",
+          "source": "sdk/src/function-tools.ts"
+        }
+      ],
+      "topic": "/errors/client/#MCP_TOOL_SCHEMA_INVALID"
+    },
+    {
       "code": "MEMBER_NOT_FOUND",
       "owners": [
         {
@@ -5623,6 +5711,10 @@
     {
       "code": "R402_ASTRO_SDK_VERSION_TOO_OLD",
       "owners": [
+        {
+          "owner": "public",
+          "source": "astro/src/endpoint-tools.ts"
+        },
         {
           "owner": "public",
           "source": "astro/src/release-slice.ts"

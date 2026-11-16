@@ -62,4 +62,17 @@ Stable error codes for the Astro SSR runtime. Each carries `code`, `message`, `s
 
 - `R402_DEPLOY_STAGE_FAILED` — apply-v1 state machine failure at a specific stage (`validate` / `stage` / `migrate` / `schema_settling` / `activating` / `snapstart_validate`).
 
+**MCP tool declarations (`export const tool` / `export const tools`):**
+
+One code per condition, whoever finds it. `run402 deploy` / `run402 up` (function files) and `astro build` (endpoint files) read the declaration by parsing the source and refuse before any request, with `details.file`, `details.line` (when exact) and `details.field_path`. The gateway refuses the same conditions at the plan with HTTP 422, `resource` `functions.<function>.tools.<tool>` and an `edit_request` next action.
+
+- `MCP_TOOL_NOT_STATIC` — the declaration holds a variable, a call, a spread, a computed key or a `${…}` template; or the export is reassigned, a function or class, or re-exported from another module; or the file cannot be parsed. Write every value inline; `satisfies`, a type annotation and `as const` are fine.
+- `MCP_TOOL_SCHEMA_INVALID` — `description` missing, empty or over 1024 characters; `input` missing or its root `type` not `"object"`; both `tool` and `tools` exported; `name` under `tools`; an unknown field, annotation or `method`; a `{param}` that is not a required `string` or `integer` property of `input`. In an Astro endpoint also: a written `path`, a `method` the file does not export, or several handlers (or `ALL`) and no `method`.
+- `MCP_TOOL_NAME_INVALID` — a tool name that is not 1 to 128 of `A-Z a-z 0-9 _ - .`, or an Astro endpoint's `tool` with no `name`.
+- `MCP_TOOL_NAME_DUPLICATE` — two tools share a name; names are unique in a release.
+- `MCP_TOOL_PATH_UNSUPPORTED` — a wildcard, a rest segment (`[...rest]`) or a parameter that is only part of a segment; each `{param}` is one whole segment.
+- `MCP_TOOL_ROUTE_ELSEWHERE` — something other than the tool's function answers its request: at `astro build`, a prerendered endpoint (a static file answers the path; use `export const prerender = false`); at the plan, a static file, a repo target or another function.
+- `MCP_TOOL_ROUTE_MISSING` (plan only) — no `path` named and no exact `POST` route, or no route sends the request to the function.
+- `MCP_TOOL_ROUTE_AMBIGUOUS` (plan only) — no `path` named and several exact `POST` routes; state `path`.
+
 ---

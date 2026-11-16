@@ -31,6 +31,23 @@ The dependency lock is part of the fixture. It pins `@run402/astro@2.5.0`, its s
 
 The local tests verify handler auth/validation boundaries using a stub database and check built artifacts. They do not claim to execute Postgres RLS, hosted login, or CDN cache behavior; the two-user browser checks above are live acceptance.
 
+## The notes API and its MCP tools
+
+`src/pages/api/notes.ts` is a JSON endpoint beside the page: `GET /api/notes` lists the signed-in person's notes and `POST /api/notes` adds one, through the same `listNotes` / `addNote` helpers the page uses. The file also declares the two requests as the app's MCP tools:
+
+```ts
+export const tools = {
+  list_notes: { method: 'GET', description: "List the signed-in person's private notes, oldest first.", input: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 100 } } } },
+  add_note: { method: 'POST', description: 'Add a private note for the signed-in person.', input: { type: 'object', properties: { title: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['title'] } },
+};
+```
+
+Every Run402 app is an MCP server at `https://<host>/_run402/mcp`. An assistant the person connected calls `list_notes` and the endpoint receives `GET /api/notes?limit=…`; it calls `add_note` and the endpoint receives `POST /api/notes` with the arguments as the JSON body. Each call runs as that person: `auth.requireUser()` resolves them and row-level security selects their rows, so there is no second function and no second copy of the gate. An anonymous call gets the endpoint's `401`, which the platform turns into the sign-in challenge. `list_notes` is a `GET`, so it is listed read-only.
+
+`astro build` reads the declaration by parsing the file, never by running it, which is why every value is a literal. The tools are written to `dist/run402/adapter.json`, `buildAstroReleaseSlice` puts them on the `ssr` function, and `run402 up --manifest run402.deploy.ts --plan` lists them under `diff.tools` before anything is uploaded. That needs an `@run402/astro` and an `@run402/sdk` that read tool declarations; the versions this fixture's lock pins predate them and build the endpoint as an ordinary endpoint, so raise both pins to see the tools. The literals are written without a `satisfies` clause because the pinned `@run402/functions` has no tool declaration type.
+
+After a deploy, `urls.mcp` in the result is the URL to give the person. To call the tools yourself as a test user, with no browser, mint a test session with the SDK (`r.auth.createTestSession(projectId, { label: 'alice' })`): the bundle's `mcp.url` and `mcp.access_token` reach the endpoint above as `alice`, and `examples.mcp` is a ready-to-run `tools/list` call.
+
 ## Edit the CMS through the CLI
 
 Only the site owner edits article content in this example; the exposure policy grants public SELECT, not browser writes. Use the actual returned project ID and hostname:

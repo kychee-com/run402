@@ -183,7 +183,7 @@ const diff = await p.apply.diff({ from: "empty", to: "active" });
 ({ release: active.release_id, routes: diff.routes, static_assets: diff.static_assets })
 ```
 
-`p.apply.getRelease(releaseId)` and `p.apply.getActiveRelease()` return the release inventory: release metadata, site paths, `static_public_paths` browser reachability entries, functions, secret keys, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata` (`file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, `spa_fallback`), and warnings when returned. `p.apply.diff({ from, to })` takes `from` as `empty`, `active`, or a release id and `to` as `active` or a release id; it returns `migrations.applied_between_releases`, secret and subdomain diffs as `added` / `removed`, route diffs as `added` / `removed` / `changed`, and `static_assets` with unchanged/changed/added/removed counts, newly uploaded and reused CAS bytes, and `legacy_immutable_warnings`, `previous_immutable_failures`, and `cas_authorization_failures`.
+`p.apply.getRelease(releaseId)` and `p.apply.getActiveRelease()` return the release inventory: release metadata, site paths, `static_public_paths` browser reachability entries, functions (each with the `tools` the app serves at `/_run402/mcp`: `name`, `description`, `input`, `annotations`, `method`, `path`), secret keys, subdomains, materialized routes, applied migrations, `release_generation`, `static_manifest_sha256`, nullable `static_manifest_metadata` (`file_count`, `total_bytes`, `cache_classes`, `cache_class_sources`, `spa_fallback`), and warnings when returned. `p.apply.diff({ from, to })` takes `from` as `empty`, `active`, or a release id and `to` as `active` or a release id; it returns `migrations.applied_between_releases`, secret and subdomain diffs as `added` / `removed`, route diffs as `added` / `removed` / `changed`, `tools` as the app's tool names under the same three buckets, and `static_assets` with unchanged/changed/added/removed counts, newly uploaded and reused CAS bytes, and `legacy_immutable_warnings`, `previous_immutable_failures`, and `cas_authorization_failures`.
 
 ### Restore points
 
@@ -242,6 +242,20 @@ export default async (req: Request) => {
 Fluent surface on both: `.select() / .eq() / .neq() / .gt() / .lt() / .gte() / .lte() / .like() / .ilike() / .in() / .order() / .limit() / .offset()` for reads; `.insert(obj | obj[]) / .update(obj) / .delete()` for writes (chain with `.eq()` to scope; return arrays of affected rows).
 
 For TypeScript autocomplete, `npm install @run402/functions` in your editor's project. Same package also works at build time for static-site generation if you set `RUN402_SERVICE_KEY` + `RUN402_PROJECT_ID` in `.env`.
+
+### The app's own MCP tools
+
+The app you deploy is itself an MCP server, at `https://<host>/_run402/mcp`, for the assistants of the people who use it. (These are the app's tools, not this server's eight.) A function file declares them beside its handler, as static literals:
+
+```ts
+export const tools = {
+  list_events: { method: "GET", path: "/api/events", description: "List upcoming events.", input: { type: "object", properties: { limit: { type: "integer" } } } },
+  create_event: { description: "Create an event.", input: { type: "object", properties: { title: { type: "string" } }, required: ["title"] } },
+};
+export default async (req: Request) => { /* req.headers.get("x-run402-mcp-tool") says which tool */ };
+```
+
+`export const tool = { description, input }` declares one, named after the function. `deploy` and `up` read the export by parsing each function's source (never running it) and send it as `functions.<name>.tools` on the release, `[]` when the source declares none. The release is the only carrier: the gateway never reads function source, so it is `deploy` and `up` reading the export that puts the tools in the release, and a function they send with no declaration has none. A declaration that holds a variable, a call, a spread or a template substitution fails before any request with `MCP_TOOL_NOT_STATIC`, the file and the line; a bad shape with `MCP_TOOL_SCHEMA_INVALID`. A tool names a request the function answers (`method`, default `POST`; `path`, default the function's one exact `POST` route), so the gateway refuses a tool nothing answers at the plan (`MCP_TOOL_ROUTE_MISSING`, HTTP 422, `edit_request`). The `deploy` result's `urls.mcp` is the URL to give the person, and a release's `diff.tools` shows what changed. In an Astro app the declarations go in endpoint files and `astro build` reads them.
 
 ### Function-level auth gates
 

@@ -1407,6 +1407,24 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
+<h2 id="MCP_TOOL_ROUTE_AMBIGUOUS">MCP_TOOL_ROUTE_AMBIGUOUS</h2>
+
+Owner: `compatibility:reference/error-codes`.
+
+The gateway refused the plan (HTTP 422): a tool names no `path` and its function is the target of several exact `POST` routes, so the tool's request is ambiguous.
+
+**Suggested fix:** state `path` (and `method`) on the declaration.
+
+
+<h2 id="MCP_TOOL_ROUTE_MISSING">MCP_TOOL_ROUTE_MISSING</h2>
+
+Owner: `compatibility:reference/error-codes`.
+
+The gateway refused the plan (HTTP 422): a tool names no `path` and its function has no exact route that accepts `POST`, or no route of the release sends the tool's method and path to its function. `resource` is `functions.<function>.tools.<tool>`.
+
+**Suggested fix:** give the function one exact `POST` route, or state `method` and `path` for a request one of its routes answers. `run402 deploy releases active` lists the live routes.
+
+
 <h2 id="MEMBER_NOT_FOUND">MEMBER_NOT_FOUND</h2>
 
 Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.

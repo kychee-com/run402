@@ -613,9 +613,11 @@ r.archives.importToCore(opts: {
 ```
 deploy(projectId, opts: {
   name: string, code: string, config?: { timeout?, memory? },
-  deps?: string[], schedule?: string | null, timezone?: string,
+  deps?: string[], schedule?: string | null, timezone?: string, tools?: FunctionToolSpec[],
 }): Promise<FunctionDeployResult> // routes through unified apply (functions.patch.set). schedule is declared as a schedule trigger beside the
-  // function's other triggers (null removes it; omitted keeps the triggers it has). result: { name, url, status, runtime, triggers, warnings },
+  // function's other triggers (null removes it; omitted keeps the triggers it has). tools: leave out with @run402/sdk/node, which reads
+  // `export const tool` / `export const tools` from code and sends them ([] for none); pass it to carry MCP tools as data. A deploy
+  // replaces the function, so with neither it has no tools afterwards. result: { name, url, status, runtime, triggers, warnings },
   // triggers as stored; runtime_version & deps_resolved are null via this path - read r.functions.list() for resolved versions
 invoke(projectId, name, opts?: { method?, body?, headers?, idempotencyKey?, wait? }): Promise<FunctionInvokeResult> // paid calls require a stable idempotencyKey; wait polls a 202 run handle and replays the same key for the retained result
 logs(projectId, name, opts?: { tail?, since?, until?, requestId?, origin? }): Promise<FunctionLogsResult>
@@ -1353,7 +1355,7 @@ verifyEmailCode(projectId, { challengeId, code }): Promise<MagicLinkVerifyResult
 createUser(projectId, opts: { email, isAdmin?, sendInvite?, redirectUrl?, clientState? }): Promise<AuthUserAdminResult>
 inviteUser(projectId, opts: { email, isAdmin?, redirectUrl, clientState? }): Promise<AuthUserAdminResult>
 getUser(projectId, opts: { email }): Promise<AuthUserRecord> // { id, email, is_admin, is_test, email_verified_at, created_at }; read-only
-createTestSession(projectId, opts: { label, isAdmin? }): Promise<TestSessionResult> // { user, session, access_token, expires_in, ... }
+createTestSession(projectId, opts: { label, isAdmin? }): Promise<TestSessionResult> // { user, session, access_token, expires_in, app_origins, mcp?, examples, ... }
 setUserPassword(projectId, opts: { accessToken, newPassword, currentPassword? }): Promise<void>
 settings(projectId, opts: {
   allow_password_set?,
@@ -1393,7 +1395,7 @@ Native Sign in with Apple (an iPhone app's own sheet) needs the app's bundle ID 
 
 `getUser` looks one project user up by email (case-insensitive) with the service key and changes nothing: a member or a test user (`is_test: true`), so a role table keyed by user id can be seeded. No match throws the gateway's 404 `AUTH_USER_NOT_FOUND`, whose `next_actions` name the create route.
 
-`createTestSession` mints a 2-hour session (cookie value and bearer token) for the test user `<label>@<project_id>.test.invalid`, created on first use and reused by label; a test user is never a real member and carries `is_test: true` everywhere. It needs the service key and the project's test mode (on by default for prototype; otherwise `403 TEST_MODE_DISABLED`; `r.auth.settings(projectId, { test_mode: true })` enables it). Because it returns a credential it refuses on the MCP `run` sandbox (`SECRET_REQUIRES_CLI`); `run402 dev --as <label>` is the CLI door.
+`createTestSession` mints a 2-hour session (cookie value and bearer token) for the test user `<label>@<project_id>.test.invalid`, created on first use and reused by label; a test user is never a real member and carries `is_test: true` everywhere. It needs the service key and the project's test mode (on by default for prototype; otherwise `403 TEST_MODE_DISABLED`; `r.auth.settings(projectId, { test_mode: true })` enables it). When the project has a host that serves its routes, the bundle also carries `mcp: { url, access_token, expires_at }`: `url` is the app's `/_run402/mcp` on `app_origins[0]` and `access_token` is an MCP access token for the test user, valid only there and for no longer than the test session, so a script can `POST` `tools/list` or `tools/call` to `mcp.url` with `Authorization: Bearer <mcp.access_token>` and run the app's tools as that user, through the app's own middleware, with no browser and no consent screen. `examples.mcp` is a ready-to-run `tools/list` call (`null` when there is no origin), beside `examples.ssr` and `examples.rest`. Because it returns credentials it refuses on the MCP `run` sandbox (`SECRET_REQUIRES_CLI`); `run402 dev --as <label>` is the CLI door.
 
 ### `r.apps`
 
