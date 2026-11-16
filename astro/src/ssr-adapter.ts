@@ -15,6 +15,11 @@
  *      sorts Astro's racy manifest `assets` list and warns when
  *      `ASTRO_KEY` is unset (see ssr-determinism.ts), so an unchanged
  *      commit does not redeploy the ssr function.
+ *   5. Records each endpoint's source file and route at
+ *      `astro:routes:resolved`, and at `astro:build:done` reads the MCP
+ *      tools those files declare (`export const tool` / `tools`), by
+ *      parsing them with the SDK's extractor, into `adapter.json`'s
+ *      `tools` (see endpoint-tools.ts).
  *
  * The adapter declares itself as supporting:
  *   - `staticOutput: 'stable'`
@@ -36,6 +41,15 @@ import type { AstroIntegration } from "astro";
 import { detectDynamicImage, detectServerIslands, detectSessionsApi } from "./ssr-detectors.js";
 import { astroKeyWarning, normalizeServerOutput } from "./ssr-determinism.js";
 import { shouldInstallDevSession } from "./dev-session.js";
+import {
+  liftEndpointTools,
+  type AdapterManifestTool,
+  type EndpointRouteRecord,
+  type ToolExtractorModule,
+} from "./endpoint-tools.js";
+
+export { Run402AstroToolDeclarationError } from "./endpoint-tools.js";
+export type { AdapterManifestTool } from "./endpoint-tools.js";
 
 /**
  * Lambda settings for the `ssr` function the pages render in. Omitted
@@ -55,6 +69,8 @@ export interface CreateRun402AdapterOptions {
   projectId?: string;
   /** The `ssr` function's memory and timeout, recorded in `adapter.json`. */
   ssr?: Run402SsrFunctionOptions;
+  /** Test seam: the module that reads tool declarations. Default `@run402/sdk/node`. */
+  loadToolExtractor?: () => Promise<ToolExtractorModule>;
 }
 
 /** Lambda's own bounds; the tier caps are the gateway's to enforce. */
@@ -131,6 +147,14 @@ export interface Run402AdapterManifest {
     pathname?: string;
     type?: "page" | "endpoint" | "redirect" | "fallback";
   }>;
+  /** The MCP tools the project's server-rendered endpoint files declare
+   *  (`export const tool` / `export const tools`), read from source at
+   *  build: each with its `name`, its `method`, and its `path` (the
+   *  endpoint's route, `[param]` written `{param}`, `base` applied). The
+   *  release-slice helper puts them on the `ssr` function as `tools`.
+   *  `[]` when no endpoint declares one; absent in manifests from adapters
+   *  that did not read them. */
+  tools?: AdapterManifestTool[];
   /** The `ssr` function's Lambda settings from `run402({ ssr: { ... } })`;
    *  the release-slice helper puts them in its `config`. Absent when the
    *  project set none (the gateway default applies). */
@@ -168,6 +192,21 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
   let resolvedRoutes: ResolvedRoute[] | undefined;
   let buildOutputDir = "";
   let serverDir = "";
+  let projectRoot = process.cwd();
+  let base: string | undefined;
+  let trailingSlash: string | undefined;
+  // The tools the endpoint files declare, read once per route snapshot.
+  let endpointTools: Promise<AdapterManifestTool[]> | undefined;
+  const readEndpointTools = (): Promise<AdapterManifestTool[]> => {
+    endpointTools ??= liftEndpointTools({
+      root: projectRoot,
+      ...(base !== undefined ? { base } : {}),
+      ...(trailingSlash !== undefined ? { trailingSlash } : {}),
+      routes: endpointRouteRecords(resolvedRoutes),
+      ...(options.loadToolExtractor ? { loadExtractor: options.loadToolExtractor } : {}),
+    });
+    return endpointTools;
+  };
   const runtimeServerEntrypoint = fileURLToPath(new URL("./runtime/server.js", import.meta.url));
   const devSessionMiddlewareEntrypoint = fileURLToPath(new URL("./dev-session-middleware.js", import.meta.url));
 
@@ -227,6 +266,11 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
         manifest.astroVersion = resolveAstroVersion();
         buildOutputDir = fileURLToPath(config.outDir);
         serverDir = fileURLToPath(new URL("./run402/server/", config.outDir));
+        // What an endpoint tool's path is built from, and where its file is.
+        const settled = config as { root?: URL; base?: string; trailingSlash?: string };
+        if (settled.root) projectRoot = fileURLToPath(settled.root);
+        base = settled.base;
+        trailingSlash = settled.trailingSlash;
       },
 
       "astro:build:setup": ({ logger }) => {
@@ -272,7 +316,17 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
           pathname: r.pathname,
           type: r.type,
           origin: r.origin,
+          entrypoint: r.entrypoint,
+          patternRegex: r.patternRegex,
         }));
+        endpointTools = undefined;
+      },
+
+      "astro:build:start": async () => {
+        // Read the endpoint tools before anything is built, so a
+        // declaration the build cannot carry fails it in the first second,
+        // with its file and line, instead of after the whole build.
+        if (resolvedRoutes) await readEndpointTools();
       },
 
       "astro:build:done": async (args: {
@@ -289,6 +343,9 @@ export function createRun402Adapter(options: CreateRun402AdapterOptions = {}): A
         manifest.serverEntrypoint = path.join(serverDir, "entry.mjs");
         manifest.clientDir = path.join(buildOutputDir, "run402/client/");
         manifest.routes = adapterManifestRoutes({ pages, routes, resolvedRoutes });
+        // Endpoint tools, read from each endpoint's source file (already
+        // read at `astro:build:start` when the routes were known by then).
+        manifest.tools = await readEndpointTools();
         // Astro has already settled NODE_ENV for this build (it fills
         // `production` when unset), and Vite compiled the server code
         // under it.
@@ -348,6 +405,9 @@ interface ResolvedRouteLike {
   pathname?: string;
   type?: string;
   origin?: string;
+  /** The route's source file, relative to the project root. */
+  entrypoint?: string;
+  patternRegex?: RegExp;
 }
 
 interface ResolvedRoute {
@@ -356,6 +416,28 @@ interface ResolvedRoute {
   pathname?: string;
   type?: string;
   origin?: string;
+  entrypoint?: string;
+  patternRegex?: RegExp;
+}
+
+/**
+ * The project's own endpoint files, prerendered ones included (a tool on a
+ * prerendered endpoint is refused, not skipped). Routes an integration
+ * injects are not the project's files and declare nothing here.
+ */
+function endpointRouteRecords(resolved: ResolvedRoute[] | undefined): EndpointRouteRecord[] {
+  const out: EndpointRouteRecord[] = [];
+  for (const r of resolved ?? []) {
+    if (r.type !== "endpoint" || typeof r.entrypoint !== "string" || r.entrypoint === "") continue;
+    if (r.origin !== undefined && r.origin !== "project") continue;
+    out.push({
+      pattern: r.pattern,
+      entrypoint: r.entrypoint,
+      prerender: r.prerender,
+      ...(r.patternRegex instanceof RegExp ? { patternRegex: r.patternRegex } : {}),
+    });
+  }
+  return out;
 }
 
 type ManifestRoute = Run402AdapterManifest["routes"][number];

@@ -356,7 +356,11 @@ export async function loadAstroAdapterManifest(
  *   the `ssr` function.
  * - `functions.replace[functionName]` describes the SSR Lambda entry from
  *   `manifest.serverEntrypoint` and carries `class: "ssr"` (gateway v1.52+)
- *   so the gateway routes it through the ISR cache.
+ *   so the gateway routes it through the ISR cache. Its `tools` are the MCP
+ *   tools the build read from the project's endpoint files
+ *   (`manifest.tools`), `[]` when there are none: each names the request
+ *   (`method` + `path`) the app's own endpoint answers, so a tool needs no
+ *   route entry.
  * - `routes` is intentionally **omitted** from the returned slice (not
  *   `{ replace: [] }`). An Astro hybrid release needs no explicit route table:
  *   prerendered pages resolve through the static manifest (implicit
@@ -430,11 +434,16 @@ export async function buildAstroReleaseSlice(
     ...(opts.minify !== undefined ? { minify: opts.minify } : {}),
   });
 
+  // The MCP tools the build read from the project's endpoint files. Always
+  // stated, `[]` when there are none: the release entry is their only
+  // carrier, and a stated `tools` is sent as written, so the deploy never
+  // parses the bundled source looking for them.
   const functionSpec: FunctionSpec = {
     runtime: "node22",
     class: "ssr",
     capabilities: [ASTRO_SSR_OUTPUT_CONTRACT_VERSION],
     source: bundle.code,
+    tools: Array.isArray(manifest.tools) ? manifest.tools.map((tool) => ({ ...tool })) : [],
   };
 
   // Lambda settings: the build's `run402({ ssr })`, then this call's

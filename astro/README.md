@@ -392,6 +392,77 @@ import { SignIn } from "@run402/astro/components";
 
 A `@gmail.com` user rejected from a Workspace-restricted admin tool lands back on this page with "This site is restricted to approved email domains. Sign in with your work account." rendered above the form. `<SignIn>` emits its own URL as the error-return target on the OAuth start link, so the round-trip is automatic — you never touch a query param or the URL hash. Known codes (`domain_not_allowed`, `account_exists_requires_link`, `identity_already_linked`) get specific copy; anything else (transient/infra) falls back to a generic "Sign-in could not be completed. Please try again." The block carries `role="alert"` and the `.r402-auth-error` class — restyle via your own CSS or the `--r402-error-fg` / `--r402-error-bg` / `--r402-error-border` custom properties. With no error param the render is byte-identical to before — nothing extra ships.
 
+## MCP tools: an endpoint the site already calls
+
+Every Run402 app is an MCP server at `https://<host>/_run402/mcp`, so a person's own assistant (ChatGPT, Claude, Codex) can use the app as them. To make an endpoint a tool, declare it beside the handler. There is no second function and no second copy of your gate: a tool call is the same request your page sends, so it runs `src/middleware.ts` and the handler as the signed-in person.
+
+```ts
+// src/pages/api/notes.ts
+import type { APIRoute } from "astro";
+
+export const tools = {
+  list_notes: {
+    method: "GET",
+    description: "List the signed-in person's notes, newest first.",
+    input: { type: "object", properties: { tag: { type: "string" } } },
+  },
+  add_note: {
+    method: "POST",
+    description: "Add a note for the signed-in person.",
+    input: { type: "object", properties: { title: { type: "string", maxLength: 200 } }, required: ["title"] },
+  },
+};
+
+export const GET: APIRoute = async ({ url }) => { /* url.searchParams.get("tag") */ };
+export const POST: APIRoute = async ({ request }) => { /* (await request.json()).title */ };
+```
+
+```ts
+// src/pages/api/notes/[note_id].ts: one handler, so `tool` takes its method from the file
+export const tool = {
+  name: "update_note",
+  description: "Replace the text of one note.",
+  input: { type: "object", properties: { note_id: { type: "string" }, text: { type: "string" } }, required: ["note_id", "text"] },
+};
+export const POST: APIRoute = async ({ params, request }) => { /* params.note_id */ };
+```
+
+The rules:
+
+- **`tool` or `tools`, never both.** `tool` is one declaration and states its `name`. `tools` is an object whose keys are the tool names; a `name` field inside it is refused.
+- **`description`** (1 to 1024 characters) and **`input`** (a JSON Schema whose root `type` is `"object"`) are required. `title` and `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) are optional.
+- **`method`** is `GET`, `POST`, `PATCH`, `PUT` or `DELETE`. It defaults to the one handler the file exports; state it when the file exports several, or `ALL`.
+- **The path is never written.** It is the endpoint's own route, `[param]` read as `{param}`, with your `base` applied: `src/pages/api/notes/[note_id].ts` is `/api/notes/{note_id}`. Every `{param}` is a required `string` or `integer` property of `input`.
+- **Where the arguments go.** Path parameters fill the path. On `GET` and `DELETE` the rest become the query string; on `POST`, `PATCH` and `PUT` they are the JSON body. That is the request your own page already sends.
+- **A `GET` tool is listed read-only**, which is what an assistant's "allow read actions" setting acts on. If a `GET` leaves a mark (it flags a thread as read, say), set `annotations: { readOnlyHint: false }`.
+- **A static literal.** The declaration holds only object, array, string, number, boolean and null literals: no variable, call, spread, computed key or `${…}` template. `satisfies`, a type annotation and `as const` are fine.
+
+`astro build` reads the declarations from each endpoint's source file, by parsing it and never by running it, with the reader `@run402/sdk` ships (install `@run402/sdk` in the project). It writes them to `dist/run402/adapter.json` as `tools`, and `run402 deploy --dir dist` / `buildAstroReleaseSlice` puts them on the `ssr` function's release entry. That entry is the only carrier: the platform never reads your source for tools, and nothing is added to `routes`, so a CI deploy needs no route scopes. `run402 deploy --plan` lists what the deploy would add, remove or change under `diff.tools`; after the deploy, `urls.mcp` is the URL to give the person.
+
+A declaration the build cannot carry fails `astro build` in its first second, with the file and the line:
+
+```
+[MCP_TOOL_ROUTE_ELSEWHERE] This endpoint is prerendered, so a static file answers `/feed.json` and a tool call would never reach the handler. Add `export const prerender = false` to serve it on request, or remove the tool. (src/pages/feed.json.ts:8, tool)
+```
+
+| Code | Cause | Fix |
+|------|-------|-----|
+| `MCP_TOOL_NOT_STATIC` | The declaration holds a variable, a call, a spread, a computed key or a template substitution, or the export is reassigned or re-exported from another module. | Write the values inline in this file. |
+| `MCP_TOOL_SCHEMA_INVALID` | A missing or empty `description` (or one over 1024 characters); `input` missing or not `type: "object"`; both `tool` and `tools`; a `name` under `tools`; an unknown field, annotation or method; a `path` written in an endpoint file; a stated `method` the file does not export; several handlers and no `method`; a `{param}` that is not a required `string` or `integer` property of `input`. | Fix the named field. |
+| `MCP_TOOL_NAME_INVALID` | A tool name that is not 1 to 128 of `A-Z a-z 0-9 _ - .`, or a `tool` with no `name`. | Name it. |
+| `MCP_TOOL_NAME_DUPLICATE` | Two tools of the build share a name. | Rename one. |
+| `MCP_TOOL_ROUTE_ELSEWHERE` | The endpoint is prerendered, so a static file answers its path. | `export const prerender = false`, or remove the tool. |
+| `MCP_TOOL_PATH_UNSUPPORTED` | The route has a rest segment (`[...rest]`) or a parameter that is only part of a segment (`post-[id]`). | Declare the tool on a route with whole `[param]` segments. |
+| `R402_ASTRO_SDK_VERSION_TOO_OLD` | An endpoint declares a tool and the installed `@run402/sdk` is missing or cannot read declarations. | `npm install @run402/sdk@latest` |
+
+These are the codes `run402 deploy` and the gateway use for the same conditions, so a refusal reads the same wherever it is caught. The gateway also checks, at the plan, what only the whole release can show: `MCP_TOOL_NAME_DUPLICATE` against the functions this deploy does not touch.
+
+**Signing in.** `tools/list` is not filtered by caller. When an assistant with no token calls a tool and your middleware or handler answers `401`, the platform turns it into the sign-in challenge: the person signs in through your app's own hosted sign-in, approves the assistant once, and the same call then reaches your handler as them. With a token, a `401` or `403` from your app is the tool's result.
+
+**Which tool was called.** A tool call carries `x-run402-trigger: mcp_tool` and `x-run402-mcp-tool: <name>`. The platform sets both and strips them from browser requests, so a handler that serves several tools can branch on the name.
+
+**Calling your own tool from a shell.** Mint a test session (`r.auth.createTestSession(projectId, { label: "alice" })` with the SDK); its bundle carries `mcp.url` and `mcp.access_token`, and `examples.mcp` is a ready-to-run `tools/list` call. The tool runs as `alice`, through your middleware, with no browser and no consent screen. `astro dev` does not answer `/_run402/mcp`: tools are tested against a deployed project.
+
 ## `<Run402Picture>` — runtime CMS images
 
 For images coming from a DB row at SSR time (the common CMS pattern), use `<Run402Picture asset={page.hero_asset}>`. The `asset` prop is the `AssetRef` JSONB that `r.assets.put()` returned at upload time — store the whole object, not just the URL, then render directly.
@@ -531,6 +602,7 @@ await project.apply({
 - roots the site at `dist/run402/client/` (the served output) — **not** `dist/`; a build with no static output (every page server-rendered, no `public/`) leaves that directory empty, and the site is then the empty file set, so the release has no static files and every path reaches the `ssr` function;
 - sets `site.public_paths: { mode: "implicit" }` so prerendered pages are reachable by filename;
 - bundles the SSR entry into a single `class: "ssr"` function;
+- puts the MCP tools the build read from your endpoint files on that function as `tools` (`[]` when there are none; see "MCP tools" above);
 - **omits `routes`** (it is not in the returned object) so base-release routes — e.g. a separately-declared `/api/*` function — carry forward instead of being cleared, and the slice stays safe to submit from a CI OIDC session that has no route scopes.
 
 **Anti-pattern:** do not point `fileSetFromDir`/`dir()` at `dist/` and build `public_paths` by hand. That ships the adapter build tree (`run402/adapter.json`, `run402/server/**`) as static assets and lands every page under a `run402/client/` path prefix — so the static manifest has no reachable pages, every URL falls through to the SSR catchall and 404s, and the SSR bundle becomes publicly downloadable. The SDK now rejects this locally with `ASTRO_ADAPTER_TREE_IN_SITE` before any upload, and the gateway warns (`SITE_NO_REACHABLE_HTML`) when a release ships HTML that isn't reachable at any public path.
@@ -563,6 +635,8 @@ The 17 reserved codes for the SSR runtime:
 Every code has a `suggestedFix` field that an AI coding agent can act on directly.
 
 `R402_ASTRO_MIDDLEWARE_UNSUPPORTED` is reserved and nothing raises it: `src/middleware.ts` is supported, and it is the recommended place for an auth or membership gate (see "Gating every page" above).
+
+A tool declaration the build cannot carry fails `astro build` with an `MCP_TOOL_*` code (`MCP_TOOL_NOT_STATIC`, `MCP_TOOL_SCHEMA_INVALID`, `MCP_TOOL_NAME_INVALID`, `MCP_TOOL_NAME_DUPLICATE`, `MCP_TOOL_ROUTE_ELSEWHERE`, `MCP_TOOL_PATH_UNSUPPORTED`), the file and the line. They are not `R402_*` codes because `run402 deploy` and the gateway raise the same ones for the same conditions; the table is under "MCP tools" above.
 
 ---
 

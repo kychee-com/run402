@@ -375,6 +375,31 @@ describe("buildAstroReleaseSlice — happy path", () => {
       cacheTtl: 30,
     });
   });
+
+  it("puts the build's endpoint tools on the ssr function as `tools`, and still omits routes", async () => {
+    const tools = [
+      { name: "list_notes", description: "List notes.", input: { type: "object", properties: { tag: { type: "string" } } }, method: "GET" as const, path: "/api/notes" },
+      { name: "add_note", description: "Add a note.", input: { type: "object", properties: { title: { type: "string" } }, required: ["title"] }, method: "POST" as const, path: "/api/notes" },
+    ];
+    const { distDir } = writeFixture(root, {
+      routes: [{ pattern: "/api/notes", prerender: false, type: "endpoint" }],
+      tools,
+    });
+    const slice = await buildAstroReleaseSlice(distDir);
+    assert.deepEqual(slice.functions.replace.ssr!.tools, tools);
+    // A tool names a request the ssr function already answers, so it needs
+    // no route entry and a CI deploy needs no route scopes.
+    assert.equal(slice.routes, undefined);
+    assert.deepEqual(Object.keys(slice).sort(), ["functions", "site"]);
+  });
+
+  it("states `tools: []` when the build read none, so a deploy never parses the bundle for them", async () => {
+    const none = await buildAstroReleaseSlice(writeFixture(root, { routes: [], tools: [] }).distDir);
+    assert.deepEqual(none.functions.replace.ssr!.tools, []);
+    // A manifest written by an adapter that did not read tools has no `tools` key.
+    const older = await buildAstroReleaseSlice(writeFixture(root, { routes: [] }).distDir);
+    assert.deepEqual(older.functions.replace.ssr!.tools, []);
+  });
 });
 
 describe("buildAstroReleaseSlice — server-rendered-only build", () => {
