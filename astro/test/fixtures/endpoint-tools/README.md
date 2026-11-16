@@ -1,6 +1,6 @@
 # Endpoint tools fixture
 
-Three Astro endpoint files that declare MCP tools beside their handlers. `astro/src/endpoint-tools.test.ts` reads them the way the adapter does at `astro build`: from source, by parsing, never by running them.
+Three Astro endpoint files that declare MCP tools beside their handlers. `astro/src/endpoint-tools.test.ts` reads them the way the adapter does at `astro build`: from source, by parsing, never by running them. `astro/src/preset.test.ts` builds a copy of the site without `feed.json.ts` through `run402({ base: "/app" })`, and checks that every tool path starts with `/app`.
 
 | File | Route | What it shows |
 |---|---|---|

@@ -15,6 +15,20 @@ That returns a complete `AstroUserConfig` with:
 - The build-time image integration — `<Image>` upload pipeline + WebP variant ladder + HEIC `display_jpeg` + blurhash + CDN-served immutable URLs
 - Build-time hard-fail detectors for unsupported Astro features (dynamic `<Image src={expr}>`, server islands, sessions API) with structured `R402_ASTRO_*` errors
 
+Any other field you would pass to `defineConfig({...})` (`base`, `trailingSlash`, `site`, `vite`, `build`, `srcDir`, `redirects`, …) goes to `run402({...})` and reaches Astro as written. Your `integrations` are added after the image integration. An `adapter` you pass replaces the Run402 SSR adapter; passing `ssr` settings beside it fails the config load, since only the Run402 adapter reads them.
+
+```js
+// astro.config.mjs
+import react from "@astrojs/react";
+import run402 from "@run402/astro";
+
+export default run402({
+  base: "/app",
+  integrations: [react()],
+  vite: { plugins: [myVirtualModulePlugin()] },
+});
+```
+
 ## Two entry shapes
 
 | | image integration only | full preset |

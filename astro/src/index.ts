@@ -394,16 +394,25 @@ export type { Run402SsrFunctionOptions } from "./ssr-adapter.js";
 /** v0.2.x compatibility alias — same as `run402Image`. */
 export { run402Image as run402 };
 
-export interface Run402PresetOptions extends Run402AstroOptions {
+/**
+ * The options of the default-export preset: the image integration's
+ * options, the preset's own `images` and `ssr`, and every field of
+ * Astro's own config. A field the preset does not read itself (`base`,
+ * `trailingSlash`, `site`, `vite`, `build`, `srcDir`, `redirects`, …)
+ * reaches Astro unchanged, as it would through `defineConfig({...})`.
+ */
+export interface Run402PresetOptions extends Run402AstroOptions, AstroUserConfig {
   /** Astro output mode. Default `'server'` — every page SSR unless
    *  explicitly `export const prerender = true;`. Pass `'static'` to
    *  opt entirely out of SSR (image integration still runs). */
-  output?: "server" | "static";
-  /** Extra Astro integrations to compose alongside the preset's. */
-  integrations?: RealAstroIntegration[];
-  /** Override the project's site URL. Astro uses this for canonical
-   *  links and sitemap generation; default is derived at deploy time. */
-  site?: string;
+  output?: AstroUserConfig["output"];
+  /** Astro integrations, added after the preset's image integration.
+   *  Nested arrays and falsy entries are allowed, as Astro allows them. */
+  integrations?: AstroUserConfig["integrations"];
+  /** Another adapter in place of the Run402 SSR adapter. The image
+   *  integration still runs. `ssr` configures only the Run402 adapter,
+   *  so passing `ssr: true` or an `ssr` object with `adapter` is refused. */
+  adapter?: AstroUserConfig["adapter"];
   /** Disable the image integration. Default `true`. Useful when you
    *  want the SSR adapter without the build-time image pipeline. */
   images?: boolean;
@@ -415,6 +424,38 @@ export interface Run402PresetOptions extends Run402AstroOptions {
   ssr?: boolean | Run402SsrFunctionOptions;
 }
 
+/** The options the preset reads itself: the Run402-only ones, and the
+ *  Astro fields it composes (`output`, `integrations`, `adapter`). */
+type PresetOwnKey = Exclude<keyof Run402PresetOptions, keyof AstroUserConfig> | "output" | "integrations" | "adapter";
+
+// Typed as a Record so that an option added to `Run402AstroOptions` or to
+// the preset fails the type-check until it is listed here, instead of
+// leaking into Astro's config.
+const PRESET_OWN_KEYS: Record<PresetOwnKey, true> = {
+  projectId: true,
+  assetPrefix: true,
+  dryRun: true,
+  verbose: true,
+  credentials: true,
+  assetsDir: true,
+  manifestPath: true,
+  assetExtensions: true,
+  images: true,
+  ssr: true,
+  output: true,
+  integrations: true,
+  adapter: true,
+};
+
+/** Every field of `options` the preset does not read itself, unchanged. */
+function astroFields(options: Run402PresetOptions): AstroUserConfig {
+  const fields: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(options)) {
+    if (!Object.hasOwn(PRESET_OWN_KEYS, key)) fields[key] = value;
+  }
+  return fields as AstroUserConfig;
+}
+
 /**
  * `run402()` — default export. Returns a complete `AstroUserConfig`
  * suitable for `export default run402();` in `astro.config.mjs`.
@@ -422,11 +463,17 @@ export interface Run402PresetOptions extends Run402AstroOptions {
  * Default behavior: `output: 'server'`, image integration + SSR
  * adapter both enabled. Toggle either off via `images: false` /
  * `ssr: false`. Compose alongside other integrations via
- * `integrations: [...]`.
+ * `integrations: [...]`. Every other Astro config field (`base`,
+ * `trailingSlash`, `vite`, `build`, …) is passed through unchanged.
  *
  * @see https://docs.run402.com/astro
  */
 function preset(options: Run402PresetOptions = {}): AstroUserConfig {
+  if (options.adapter !== undefined && options.ssr !== undefined && options.ssr !== false) {
+    throw new TypeError(
+      "@run402/astro: `adapter` replaces the Run402 SSR adapter, which `ssr` configures; pass one of them, not both.",
+    );
+  }
   // The local AstroIntegration interface in this file is a hand-rolled
   // minimal shape (so the package can be type-checked when astro isn't
   // a hard peer dep). The AstroUserConfig.integrations field expects
@@ -434,7 +481,7 @@ function preset(options: Run402PresetOptions = {}): AstroUserConfig {
   // compatible — the local interface is a subset. We cast at the
   // array boundary so the type-checker sees the real type for
   // AstroUserConfig.integrations.
-  const integrations: RealAstroIntegration[] = [];
+  const integrations: NonNullable<AstroUserConfig["integrations"]> = [];
   if (options.images !== false) {
     integrations.push(run402Image(options) as RealAstroIntegration);
   }
@@ -448,17 +495,19 @@ function preset(options: Run402PresetOptions = {}): AstroUserConfig {
   // buildOutput flips to 'server' and Astro throws NoAdapterInstalled
   // because config.adapter is empty.
   const adapter =
-    options.ssr === false
-      ? undefined
-      : (createRun402Adapter({
-          projectId: options.projectId,
-          ...(typeof options.ssr === "object" ? { ssr: options.ssr } : {}),
-        }) as RealAstroIntegration);
+    options.adapter !== undefined
+      ? options.adapter
+      : options.ssr === false
+        ? undefined
+        : (createRun402Adapter({
+            projectId: options.projectId,
+            ...(typeof options.ssr === "object" ? { ssr: options.ssr } : {}),
+          }) as RealAstroIntegration);
   return {
+    ...astroFields(options),
     output: options.output ?? "server",
     integrations,
     adapter,
-    site: options.site,
   };
 }
 
