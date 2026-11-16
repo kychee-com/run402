@@ -971,7 +971,7 @@ export class VaultKeystore {
     /** A surviving receipt (on disk or supplied) authenticates the genesis; without one the restore is labeled unauthenticated salvage. */
     recovery_receipt?: VaultRecoveryReceipt | null;
     /**
-     * vault-agent-envelopes D4: the caller verified genesis's creator
+     * D-vault-client-surface-23: the caller verified genesis's creator
      * fingerprints against the control plane's SIGNED allocation record. That
      * is platform-attested consistency, NOT independent authentication — the
      * platform serves both sides of the comparison — so it labels the restore
@@ -1001,7 +1001,7 @@ export class VaultKeystore {
     }
     // The creator's OWN genesis envelope is bound to genesis byte-for-byte
     // (hash + size + recipient). Any OTHER recipient's envelope (a member
-    // wrapped post-genesis — vault-agent-envelopes D4's cold open) is
+    // wrapped post-genesis — D-vault-client-surface-23's cold open) is
     // not in genesis at all: for it, check genesis's own structural bindings
     // plus the envelope's addressing (this vault, this epoch, written under
     // the registered writer key); `openKeyEnvelope` then verifies the
@@ -1025,7 +1025,7 @@ export class VaultKeystore {
       fail("VAULT_CREATION_CONFLICT", "genesis key bindings do not hold for the stored envelope", "restoring vault repo state", { repo_id: genesis.repo_id, problems: bindings });
     }
     const genesisSha = storedBytesSha256(genesis as unknown as VaultSignedObject);
-    // First-open pin (agent-envelopes D4): a genesis this keystore already
+    // First-open pin (D-vault-client-surface-23): a genesis this keystore already
     // pinned for this repo_id — in a surviving repo file or the cached genesis
     // — must be the SAME genesis; a different one is a substituted vault.
     const priorRepo = this.readRepo(genesis.repo_id);

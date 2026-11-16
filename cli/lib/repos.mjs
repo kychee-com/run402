@@ -2894,7 +2894,7 @@ async function accessRevokeKey(args) {
  */
 /**
  * `repos access repin --principal <principal_id> --fingerprint <ek_…>` — a KEY-HOLDER
- * explicitly accepts a recipient's CHANGED key (vault-agent-envelopes D3).
+ * explicitly accepts a recipient's CHANGED key (D-vault-client-surface-24).
  * The session-start reconcile refuses `pinned_key_mismatch` and never
  * bypasses it, not even after an owner's revoke — acceptance names the new
  * fingerprint (the out-of-band verification point) and moves the local pin.

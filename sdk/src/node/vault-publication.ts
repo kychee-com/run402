@@ -1387,7 +1387,7 @@ export interface VaultRecord {
   /**
    * The control plane's SIGNED allocation record for the vault (present on
    * gateways that wrap it into the vault read; `null`/absent otherwise).
-   * vault-agent-envelopes D4: a cold open compares genesis's creator
+   * D-vault-client-surface-23: a cold open compares genesis's creator
    * fingerprints against these — platform-attested consistency, never
    * independent authentication (the platform serves both sides).
    */
@@ -2529,7 +2529,7 @@ export async function writeVaultAutoGcThreshold(targetRepoDir: string, generatio
 
 /**
  * {@link Vault.ensureRepoState}'s report when a cold keystore was
- * restored from its own envelope (vault-agent-envelopes D4). `trust` is
+ * restored from its own envelope (D-vault-client-surface-23). `trust` is
  * `receipt` only when a creator-held recovery receipt pinned genesis;
  * `platform_attested` means the control plane's signed allocation matched —
  * consistency the platform itself vouches for, so `independently_verified`
@@ -3018,7 +3018,7 @@ export class Vault {
   }
 
   /**
-   * vault-agent-envelopes D4 — the COLD OPEN. A keystore that holds an
+   * D-vault-client-surface-23 — the COLD OPEN. A keystore that holds an
    * identity but no repo file for this vault (a member joining from a fresh
    * machine, or a creator whose repo file was lost) restores `K_repo` from
    * its OWN `key_envelope` instead of dying `VAULT_REPO_STATE_MISSING`:
@@ -4373,7 +4373,7 @@ export class Vault {
       // recipient is now genuinely covered. Treat exactly that code as a
       // benign race, not a failure; anything else propagates.
       if (isRun402Error(e) && (e as { code?: string }).code === "VAULT_OBJECT_EXISTS_DIFFERENT") {
-        // vault-agent-envelopes (consult 7.6): a benign race is only
+        // D-vault-client-surface-24: a benign race is only
         // benign once the WINNING envelope has been read back and verified
         // — same repo, same epoch, this recipient, signed by the vault's
         // registered writer. Anything else is recorded as skipped, never as

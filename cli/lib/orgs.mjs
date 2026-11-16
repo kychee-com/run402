@@ -717,7 +717,7 @@ async function runMember(args) {
   }
 
   if (memberAction === "revoke-key") {
-    // vault-agent-envelopes D3: owner + step-up revokes a member's current
+    // D-vault-human-envelopes-9: owner + step-up revokes a member's current
     // vault encryption key — the ONLY rotation path for a member that shares
     // an org with another custodian (a lost/rebuilt keystore fails
     // VAULT_KEY_ROTATION_REQUIRED and points here). Adapter only.

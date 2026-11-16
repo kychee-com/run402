@@ -107,7 +107,7 @@ export class OrgMembers {
   }
 
   /**
-   * vault-agent-envelopes D3 — an OWNER revokes a member's current vault
+   * D-vault-human-envelopes-9 — an OWNER revokes a member's current vault
    * encryption key (`DELETE /orgs/v1/:org_id/members/:principal_id/encryption-key`,
    * owner + step-up). The independent-credential rotation path: a member whose
    * keystore was lost or rebuilt cannot self-rotate (the asking credential is

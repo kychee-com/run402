@@ -1719,7 +1719,7 @@ export function normalizeSourceRecoveryCode(input: string): string {
 
 export { bytesToHex, hexToBytes };
 
-// ── vault-agent-envelopes: keystore-key possession proof ──────────────────
+// ── D-vault-human-envelopes-8: keystore-key possession proof ─────────────────────────────
 
 /**
  * The client half of the gateway's ECDH key-confirmation challenge for a

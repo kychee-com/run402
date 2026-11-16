@@ -788,7 +788,7 @@ const SURFACE: Capability[] = [
   { id: "add_org_member",      endpoint: "POST /orgs/v1/:org_id/members",                     cli: "orgs:members:add",    openclaw: "orgs:members:add" },
   { id: "set_org_member_role", endpoint: "PATCH /orgs/v1/:org_id/members/:principal_id",      cli: "orgs:members:role",   openclaw: "orgs:members:role" },
   { id: "remove_org_member",   endpoint: "DELETE /orgs/v1/:org_id/members/:principal_id",     cli: "orgs:members:rm",     openclaw: "orgs:members:rm" },
-  // vault-agent-envelopes D3: the owner's independent-credential rotation path (owner + step-up mutation).
+  // D-vault-human-envelopes-9: the owner's independent-credential rotation path (owner + step-up mutation).
   { id: "revoke_org_member_encryption_key", endpoint: "DELETE /orgs/v1/:org_id/members/:principal_id/encryption-key", cli: "orgs:members:revoke-key", openclaw: "orgs:members:revoke-key" },
   { id: "org_audit",           endpoint: "GET /orgs/v1/:org_id/audit",                        cli: "orgs:audit",         openclaw: "orgs:audit" },
   // Current-org selection (add-cli-current-org): LOCAL state, like wallets:use
@@ -1983,7 +1983,7 @@ describe("SDK surface alignment", () => {
       // above. declareRecipientKeyRevoked is additionally an internal step
       // `rotateEpochForKeyRevocation` composes (declare, then rotate off
       // the declaration's own returned counters). acceptRecipientKeyChange
-      // (vault-agent-envelopes, `access repin`) moves the TOFU pin and
+      // (D-vault-client-surface-24, `access repin`) moves the TOFU pin and
       // records the D197 confirmation receipt when a key-holder explicitly
       // accepts a recipient's changed key.
       "repos.rotateEpoch",

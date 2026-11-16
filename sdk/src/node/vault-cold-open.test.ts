@@ -1,5 +1,5 @@
 /**
- * vault-agent-envelopes design D4 — the COLD OPEN, against the in-memory
+ * D-vault-client-surface-23 — the COLD OPEN, against the in-memory
  * transport fixture: a second keystore that is a directory recipient but has
  * no repo file for the vault (1) fails `VAULT_ENVELOPE_PENDING` with the
  * key-holders named while nobody has wrapped it, (2) restores `K_repo` from
@@ -33,7 +33,7 @@ async function rejectsCode(p: Promise<unknown>, code: string): Promise<LocalErro
   assert.fail(`expected rejection ${code}`);
 }
 
-describe("Vault.ensureRepoState — cold open from own envelope (vault-agent-envelopes D4)", () => {
+describe("Vault.ensureRepoState — cold open from own envelope (D-vault-client-surface-23)", () => {
   it("pending until wrapped → restored platform_attested/first_seen → no-op thereafter", async () => {
     const a = await makeVault();
     // B: a second keystore with its own identity, directory-listed as an

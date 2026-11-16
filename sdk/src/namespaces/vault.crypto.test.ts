@@ -633,14 +633,14 @@ vectors("vault vectors — coverage tally", () => {
 // Keep the unused-import linter honest for helpers only used in some branches.
 void ed25519PublicKey;
 
-// ── vault-agent-envelopes: keystore possession proof (client half) ────────
+// ── D-vault-human-envelopes-8: keystore possession proof (client half) ──────────────────
 import { computeKeystorePossessionProof, VAULT_KEYSTORE_POSSESSION_PREFIX } from "./vault.crypto.js";
 import { x25519 as _x25519 } from "@noble/curves/ed25519.js";
 import { hmac as _hmac } from "@noble/hashes/hmac.js";
 import { sha256 as _sha256 } from "@noble/hashes/sha2.js";
 import { utf8ToBytes as _utf8, concatBytes as _concat } from "@noble/hashes/utils.js";
 
-describe("computeKeystorePossessionProof (vault-agent-envelopes D2)", () => {
+describe("computeKeystorePossessionProof (D-vault-human-envelopes-8)", () => {
   it("reproduces the gateway's HMAC(ECDH(esk, pk), prefix + JCS) exactly, and a different scalar cannot", () => {
     // The gateway side, inline: mint an ephemeral pair, derive the shared
     // secret against the keystore's PUBLIC key, HMAC the pinned message.

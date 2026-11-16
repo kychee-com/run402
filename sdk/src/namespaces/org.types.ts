@@ -217,7 +217,7 @@ export interface MemberMutationResult {
   principal_id: string;
   role: OrgRole;
   /**
-   * vault-agent-envelopes D6 — the new member's vault-custody state,
+   * D-vault-human-envelopes-11 — the new member's vault-custody state,
    * folded in so the caller never has to ask: `enrolled_pending_wrap` (an
    * active key; a key-holder's next vault operation wraps each vault),
    * `not_enrolled` (the MEMBER's next vault operation enrolls its

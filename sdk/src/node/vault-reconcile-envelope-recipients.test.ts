@@ -171,7 +171,7 @@ describe("Vault.reconcileEnvelopeRecipients — vault-human-envelopes task 4.1",
     assert.equal(v.transport.calls.filter((c) => c.startsWith("upload:")).length, uploadsBefore + 1);
   });
 
-  it("treats a concurrent writer's DIFFERENT valid wrap of the same recipient as a benign race ONLY after verifying the winner (vault-agent-envelopes, consult 7.6)", async () => {
+  it("treats a concurrent writer's DIFFERENT valid wrap of the same recipient as a benign race ONLY after verifying the winner (D-vault-client-surface-24)", async () => {
     const v = await makeVault();
     const b = generateEncryptionKeypair();
     const bFp = ekFingerprint(b.public_key);

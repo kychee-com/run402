@@ -1097,7 +1097,7 @@ describe("vault access() — envelope_state + stale_access from desired[]", () =
 
       const result = await sdk.repos.access({ repo_id: REPO, keystore_root: root });
 
-      // vault-agent-envelopes: this_keystore is reported for every principal
+      // D-org-management-client-surface-1: this_keystore is reported for every principal
       // type, with enrollment state (whoami is not routed by this fake gateway,
       // so publish_state is honestly `unknown`, never a guess).
       assert.equal(result.this_keystore?.fingerprint, ownFingerprint);

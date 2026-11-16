@@ -59,7 +59,7 @@ import {
 import type { NextAction } from "../errors.js";
 
 /**
- * vault-agent-envelopes — per-process memo for the session-start
+ * D-vault-client-surface-24 — per-process memo for the session-start
  * fulfilment (`<keystore root>|<repo_id>`) and the enroll-if-absent step
  * (`<keystore root>`), so a process that opens the same vault many times
  * (a `git push` runs several verbs) reconciles and enrolls once.
@@ -178,9 +178,9 @@ export interface VaultStatus {
   project_id: string | null;
   /** The control plane's view. `null` when no vault is allocated for the project. */
   vault: VaultRecord | null;
-  /** vault-agent-envelopes D5: what this KEY-HOLDER's session-start fulfilment did (`null` on a machine that holds no K_repo, or `reconcile: "forbidden"`). */
+  /** D-vault-client-surface-24: what this KEY-HOLDER's session-start fulfilment did (`null` on a machine that holds no K_repo, or `reconcile: "forbidden"`). */
   reconcile_recipients?: VaultSessionReconcileResult | null;
-  /** vault-agent-envelopes D3: what the enroll-if-absent step did for this keystore's key (`null` when it did not run). */
+  /** D-vault-client-surface-22: what the enroll-if-absent step did for this keystore's key (`null` when it did not run). */
   enrollment?: VaultEnrollmentOutcome | null;
   keystore: {
     present: boolean;
@@ -524,7 +524,7 @@ export interface VaultHandleOptions {
   /** Resolve `repo_id` from the project (the cold-restart entry point). */
   project_id?: string;
   /**
-   * vault-agent-envelopes D5 — the session-start envelope fulfilment a
+   * D-vault-client-surface-24 — the session-start envelope fulfilment a
    * KEY-HOLDING client runs on its first ordinary vault operation in a
    * process (read verbs included), so a pending member is covered the next
    * time ANY key-holder does anything. `"auto"` (default): run once per
@@ -553,14 +553,14 @@ export interface VaultHandle {
   /** The full protocol object — every verb below is built on it. */
   vault: import("../node/vault-publication.js").Vault;
   /**
-   * vault-agent-envelopes D4: non-null when this open restored the repo
+   * D-vault-client-surface-23: non-null when this open restored the repo
    * file from the keystore's OWN envelope (a cold keystore joining a vault it
    * is a recipient of). Carries the honest trust tier — `platform_attested`
    * is not end-to-end authentication.
    */
   restored: import("../node/vault-publication.js").VaultColdOpenResult | null;
   /**
-   * vault-agent-envelopes D5: the session-start fulfilment outcome for a
+   * D-vault-client-surface-24: the session-start fulfilment outcome for a
    * key-holding client (`null` when this open did not run one — a restored
    * keystore has nothing to wrap yet, `reconcile: "forbidden"`, or a later
    * open in the same process). Reported beside the verb's own result, never
@@ -579,11 +579,11 @@ export interface VaultHandle {
    * writer.
    */
   writer_reconcile: VaultReconcileWriterAdmissionsPushResult | null;
-  /** vault-agent-envelopes D3: what the enroll-if-absent step did for this keystore's key on this open. */
+  /** D-vault-client-surface-22: what the enroll-if-absent step did for this keystore's key on this open. */
   enrollment: VaultEnrollmentOutcome;
 }
 
-/** The session-start reconcile's outcome (vault-agent-envelopes D5). */
+/** The session-start reconcile's outcome (D-vault-client-surface-24). */
 export interface VaultSessionReconcileResult {
   attempted: boolean;
   outcome: "reconciled" | "skipped_error" | "deferred_by_local_policy" | "forbidden" | "custody_unverified";
@@ -593,7 +593,7 @@ export interface VaultSessionReconcileResult {
   error?: string;
 }
 
-/** The enroll-if-absent step's outcome (vault-agent-envelopes D3). Never a rotation. */
+/** The enroll-if-absent step's outcome (D-vault-client-surface-22). Never a rotation. */
 export interface VaultEnrollmentOutcome {
   /** `already_active`: the directory holds this keystore's key (BOTH halves current — encryption active AND signing_fingerprint already matches, vault-multi-writer rev 47). `enrolled`: published + possession-proven in this call. `activated_pending`: an earlier unfinished publish was completed. `signing_republished` (rev 47): the encryption half was ALREADY active and needed no work; only the signing half was (re)published this call — never a rotation, the signing half is always freely republishable. `skipped_no_identity`: no local keystore identity (nothing to enroll — vault creation mints one). `skipped_no_principal`: whoami resolved no enrolling principal (e.g. a service key). `skipped_not_enrollable`: the principal's type is not custody-eligible (ci/system) — no identity is minted. `skipped_error`: whoami/publish/activate failed (older gateway, transport) — the verb still ran, but custody continuity is UNVERIFIED, so no automatic reconcile follows; `error` says why. */
   outcome: "already_active" | "enrolled" | "activated_pending" | "signing_republished" | "skipped_no_identity" | "skipped_no_principal" | "skipped_not_enrollable" | "skipped_error";
@@ -1234,9 +1234,9 @@ export interface VaultStaleAccessEntry {
 export interface VaultAccessResult {
   repo_id: string;
   org_id: string | null;
-  /** vault-agent-envelopes D5: this KEY-HOLDER's session-start fulfilment outcome (`null` when this machine holds no K_repo for the vault, or `reconcile: "forbidden"`). */
+  /** D-vault-client-surface-24: this KEY-HOLDER's session-start fulfilment outcome (`null` when this machine holds no K_repo for the vault, or `reconcile: "forbidden"`). */
   reconcile_recipients?: VaultSessionReconcileResult | null;
-  /** vault-agent-envelopes D3: the enroll-if-absent step's outcome (`null` when it did not run). */
+  /** D-vault-client-surface-22: the enroll-if-absent step's outcome (`null` when it did not run). */
   enrollment?: VaultEnrollmentOutcome | null;
   recipients: VaultAccessRecipient[];
   /** Vault-covering fingerprints (from the server) that match neither a directory entry nor a desired-state row — genuinely orphaned, revoked outside this org's membership model, or external. Excludes fingerprints already explained by `stale_access` AND by `this_keystore`. */
@@ -1252,7 +1252,7 @@ export interface VaultAccessResult {
    */
   this_keystore: {
     fingerprint: string;
-    /** `true` iff the directory holds this keystore's key as ACTIVE (vault-agent-envelopes: agents enroll too). */
+    /** `true` iff the directory holds this keystore's key as ACTIVE (D-vault-human-envelopes-1: agents enroll too). */
     enrolled: boolean;
     /** `absent` = no published key (the next vault operation enrolls); `pending` = published, possession unproven; `rotation_required` = the principal's published key is a DIFFERENT key; `unknown` = whoami unavailable. */
     publish_state: "active" | "pending" | "absent" | "rotation_required" | "unknown";
@@ -1518,7 +1518,7 @@ export class Repos {
   }
 
   /**
-   * vault-agent-envelopes D3 — a KEY-HOLDER explicitly accepts a recipient's
+   * D-vault-client-surface-24 — a KEY-HOLDER explicitly accepts a recipient's
    * CHANGED key. The session-start reconcile refuses to wrap under a
    * fingerprint that differs from this keystore's TOFU pin
    * (`pinned_key_mismatch`) — that refusal is the substitution defence and
@@ -1660,7 +1660,7 @@ export class Repos {
       onObjectStoreOriginObserved: (rid, origins) => keystore.recordObjectStoreOrigins(rid, origins),
       byoBackend: await this.#byoBackendResolver(keystore),
     });
-    // vault-agent-envelopes D3: enroll the keystore's key if this principal
+    // D-vault-client-surface-22: enroll the keystore's key if this principal
     // has none (publish + possession proof, one round trip each); a differing
     // current key REFUSES here — rotation is never automatic.
     const enrollment = await this.#ensureEnrolled(keystore);
@@ -1755,7 +1755,7 @@ export class Repos {
   }
 
   /**
-   * vault-agent-envelopes D3 — enroll-if-absent, checked FRESH on every
+   * D-vault-client-surface-22 — enroll-if-absent, checked FRESH on every
    * open (consult round 2 §4: memoizing this decision let a long-lived
    * process keep trusting a key an owner had since revoked). Reads
    * `GET /agent/v1/whoami` (the gateway folds the principal's current key
@@ -2589,7 +2589,7 @@ export class Repos {
       warnings.push({ kind: "refs_unavailable", message: "this machine does not hold K_repo for the vault, so its ref map cannot be decrypted here" });
     }
 
-    // vault-agent-envelopes D3/D5: a KEY-HOLDER's ordinary read is a
+    // D-vault-client-surface-24/-24: a KEY-HOLDER's ordinary read is a
     // session start — enroll this keystore's key if absent and fulfil every
     // pending desired recipient once per process (best-effort, reported,
     // never folded into the observation above). `status` on a machine that
@@ -5018,7 +5018,7 @@ export class Repos {
       );
     }
     const write = options.write ?? true;
-    // vault-agent-envelopes D5: fsck is observational — it never wraps an
+    // D-vault-client-surface-24: fsck is observational — it never wraps an
     // envelope, in write mode or not. Investigating a suspicious pending
     // recipient must not complete the disclosure being investigated.
     const handle = await this.open({ ...options, repo_id: repoId, reconcile: "forbidden" });
@@ -5374,7 +5374,7 @@ export class Repos {
     const record = await this.get(repoId).catch(() => null);
     const orgId = record?.org_id ?? null;
 
-    // vault-agent-envelopes D3/D5: `access` is one of the ordinary reads a
+    // D-vault-client-surface-24/-24: `access` is one of the ordinary reads a
     // KEY-HOLDER's session starts with — enroll this keystore's key if absent
     // and fulfil every pending desired recipient once per process, BEFORE the
     // roster below is read, so the roster reflects the fulfilment. Reported,
@@ -5468,7 +5468,7 @@ export class Repos {
     // not orphaned/external, it is provably this machine, so it is broken
     // out into `this_keystore` instead of left to read as a misconfiguration.
     const unmatchedRaw = coverage.recipient_fingerprints.filter((fp) => !directoryFingerprints.has(fp) && !staleAccessFingerprints.has(fp));
-    // vault-agent-envelopes: THIS machine's keystore is reported for every
+    // D-org-management-client-surface-1: THIS machine's keystore is reported for every
     // principal type — enrolled or not, covered or not — never `null` for a
     // real keystore (only when there is no local identity at all). The
     // directory now lists agent keys too, so "own fingerprint in the
