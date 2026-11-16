@@ -206,7 +206,7 @@ export function predialVaultObjectStore(repoId: string, keystoreRoot?: string): 
  * clone), so the pin-keyed trigger above predials nothing there. This
  * resolves the addressed repo OFFLINE from the keystore's own project→repo
  * match instead — the same `findRepoByProject` lookup id-form address
- * resolution uses (vault-offline-clone-resolve D1) — and predials its
+ * resolution uses (D-vault-client-surface-14) — and predials its
  * persisted origins under exactly the same terms: never awaited, every
  * failure swallowed, a project the keystore does not know predials nothing,
  * and never a network read to learn where to dial. Callers pass an id-form

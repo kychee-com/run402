@@ -198,7 +198,7 @@ export interface ResolveVaultAddressOptions {
   /** Fires once, only when THIS call allocated the vault (mirrors `Repos.capture`'s `onVaultCreated`). */
   onVaultCreated?: (created: NonNullable<VaultAddressResolution["created"]>) => void | Promise<void>;
   /**
-   * vault-offline-clone-resolve (design D3): recovery-only. Skips BOTH
+   * vault-offline-clone-resolve (D-vault-client-surface-16): recovery-only. Skips BOTH
    * local answers — the git-config pin AND the id-form keystore consult —
    * forcing a genuine network resolution. Set exclusively by {@link
    * recoverStaleVaultPin}'s internal re-resolve call: a stale local
@@ -254,7 +254,7 @@ export async function resolveVaultAddress(options: ResolveVaultAddressOptions): 
   const form = vaultRemoteAddressForm(options.address);
   if (form === "id") {
     if (!options.bypass_local_answers) {
-      // vault-offline-clone-resolve (design D1/D2): consult the LOCAL
+      // vault-offline-clone-resolve (D-vault-client-surface-14/15): consult the LOCAL
       // keystore before the network. D2's completeness argument: decrypting
       // anything from this vault requires exactly the keystore's repo file
       // (`k_repo_hex`), so a machine without one fails the clone at
@@ -325,7 +325,7 @@ export async function resolveVaultAddress(options: ResolveVaultAddressOptions): 
 /**
  * Stale-pin recovery for OFFLINE resolutions (client-surface spec,
  * "Id-form remotes pin repo_id like slug-form remotes"; widened by
- * vault-offline-clone-resolve design D3 to the keystore-sourced offline
+ * vault-offline-clone-resolve D-vault-client-surface-16 to the keystore-sourced offline
  * answer too): a pin or a keystore hit resolves with no network read, so the
  * once-in-a-lifetime stale case (a vault deleted and re-allocated out from
  * under this checkout, or a keystore file left behind by an old allocation)

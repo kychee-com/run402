@@ -383,7 +383,7 @@ describe("vault-restore-recipe: the clone row (client-surface spec's counted con
 
     const counter = new VaultOpCounter();
     const countedTransport = countingVaultTransport(planServingTransport(f.transport, () => plan), counter);
-    // vault-offline-clone-resolve (design D1/D2): the id-form address
+    // vault-offline-clone-resolve (D-vault-client-surface-14/15): the id-form address
     // resolves straight from the LOCAL keystore — zero transport
     // operations — instead of the network `findVaultByProject` read the
     // keystore-miss scenario below still pays for.

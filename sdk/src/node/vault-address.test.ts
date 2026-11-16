@@ -580,7 +580,7 @@ describe("recoverStaleVaultPin — stale-pin discovery moved to first use", () =
   });
 });
 
-// ─── recoverStaleVaultPin — keystore-sourced offline resolution (vault-offline-clone-resolve design D3) ───
+// ─── recoverStaleVaultPin — keystore-sourced offline resolution (vault-offline-clone-resolve D-vault-client-surface-16) ───
 
 describe("recoverStaleVaultPin — keystore-sourced offline resolution (vault-offline-clone-resolve)", () => {
   const ID_ORG = "55555555-5555-4555-8555-555555555555";

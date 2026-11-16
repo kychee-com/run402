@@ -602,7 +602,7 @@ export class VaultKeystore {
   }
 
   /**
-   * vault-offline-clone-resolve (design D1/D2/D6, task 1.1): the
+   * vault-offline-clone-resolve (D-vault-client-surface-14/15/19, task 1.1): the
    * keystore's project→repo lookup that lets {@link resolveVaultAddress}
    * (`vault-address.ts`) answer an id-form address WITHOUT the network
    * `findVaultByProject` round trip. D2's completeness argument: decrypting
