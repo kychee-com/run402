@@ -1,5 +1,5 @@
 /**
- * rooms-context.mjs's session-identity wiring (presence-naming-ergonomics).
+ * rooms-context.mjs's session-identity wiring (run402-private D-agent-presence-1).
  *
  * harness-context.mjs's resolution chain is unit-tested on its own
  * (cli-harness-context.test.mjs). This file proves the layer ABOVE it: that

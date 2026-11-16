@@ -1,5 +1,5 @@
 // Session identity + task-from-thread-title resolution for the agent-messaging
-// commands (presence-naming-ergonomics, run402-private tasks 2.2 / 3.1-3.2).
+// commands (run402-private D-agent-presence-1 and -2).
 //
 // Every source is best-effort and no source is load-bearing: this file pins
 // that property by proving each source can be absent, wrong-shaped, or

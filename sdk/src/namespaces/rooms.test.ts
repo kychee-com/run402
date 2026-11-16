@@ -127,7 +127,7 @@ describe("rooms.registerPresence", () => {
     assert.equal(reg.presence_id, "prs_1");
   });
 
-  it("surfaces a resumed presence's resumed/why fields without reinterpretation (presence-naming-ergonomics)", async () => {
+  it("surfaces a resumed presence's resumed/why fields without reinterpretation (run402-private D-agent-presence-1, -4)", async () => {
     const { fetch } = mockFetch(() =>
       jsonResponse({ ...PRESENCE, resumed: true }, 201),
     );
