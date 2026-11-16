@@ -374,8 +374,10 @@ function routePath(routeId: string, context: string): string {
  * ```
  *
  * Load-bearing semantics:
- * - Only three reviewed event types are routable (`deploy_activated`,
- *   `error_fingerprints_observed`, `platform_incident`); the classes
+ * - Only seven reviewed event types are routable (`agent_claim_created`,
+ *   `agent_claim_released`, `agent_message_sent`, `deploy_activated`,
+ *   `error_fingerprints_observed`, `platform_incident`,
+ *   `platform_payment_received`); the classes
  *   `security` / `billing_critical` / `destructive_lifecycle` /
  *   `verification` / `recovery` may never be routed.
  * - Filters: omitted/`null` = everything registered; an explicit `[]` is a

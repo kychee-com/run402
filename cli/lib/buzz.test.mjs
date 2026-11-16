@@ -54,6 +54,7 @@ describe("run402 buzz CLI", () => {
     assert.match(stdout.join("\n"), /community installation/);
     assert.match(stdout.join("\n"), /human adoption/);
     assert.match(stdout.join("\n"), /agent enrollment/);
+    assert.match(stdout.join("\n"), /notifications configure [^\n]*--all-projects/);
   });
 
   it("reports an older gateway as unsupported without attempting a mutation", async () => {
@@ -282,7 +283,11 @@ describe("run402 buzz notifications CLI", () => {
     const help = stdout.join("\n");
     assert.match(help, /Usage:/);
     assert.match(help, /configure -> authorize -> test -> live/);
-    assert.match(help, /deploy_activated, error_fingerprints_observed/);
+    // The seven routable types the gateway's BUZZ_ROUTE_FILTER_INVALID lists.
+    for (const t of ["agent_claim_created", "agent_claim_released", "agent_message_sent", "deploy_activated", "error_fingerprints_observed", "platform_incident", "platform_payment_received"]) {
+      assert.match(help, new RegExp(t));
+    }
+    assert.doesNotMatch(help, /three reviewed/);
     assert.match(help, /may NEVER be routed/);
     assert.match(help, /Buzz Desktop -> Settings -> Profile -> Identity/);
     assert.match(help, /never a deadman channel/);

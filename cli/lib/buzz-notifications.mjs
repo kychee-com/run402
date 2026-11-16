@@ -61,9 +61,11 @@ THE WORKFLOW — configure -> authorize -> test -> live:
                  only — nothing that predates the route is ever delivered.
 
 What can be routed:
-  event types    deploy_activated, error_fingerprints_observed,
-                 platform_incident — the three reviewed projectors. Nothing
-                 else has one, so nothing else can be routed.
+  event types    agent_claim_created, agent_claim_released,
+                 agent_message_sent, deploy_activated,
+                 error_fingerprints_observed, platform_incident,
+                 platform_payment_received — the seven reviewed projectors.
+                 Nothing else has one, so nothing else can be routed.
   event classes  security, billing_critical, destructive_lifecycle,
                  verification, and recovery may NEVER be routed to Buzz.
   Omitting --event-type/--event-class routes every registered type / every
