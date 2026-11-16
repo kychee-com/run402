@@ -11,7 +11,7 @@
  *
  * Leading-slash absolute paths ("/images/...") are REJECTED. They implicitly
  * refer to Astro's public/ directory, which would bypass the Run402 variant
- * pipeline — see design D3.
+ * pipeline — see D-astro-image-adapter-3.
  *
  * Path-alias resolution is best-effort: we read tsconfig.json once at
  * integration-setup time and match `paths` patterns. We deliberately do NOT

@@ -5,14 +5,14 @@
  * (snapshot tests don't need to spin up the Astro compiler). The `.astro`
  * component calls `buildPictureHtml()` and inserts the result via `set:html`.
  *
- * Decisions implemented here (cross-reference design.md):
- *   - D4: srcset uses the gateway's actual variant widths from the AssetRef,
+ * Decisions implemented here (specs/run402/astro-image-adapter.md, Design notes):
+ *   - D-astro-image-adapter-4: srcset uses the gateway's actual variant widths from the AssetRef,
  *     not a hard-coded 320/800/1920 — if the gateway ever generates a
  *     different set we render whatever it returned.
- *   - D5: HEIC sources use `display_jpeg` for the `<img>` fallback, never
+ *   - D-astro-image-adapter-5: HEIC sources use `display_jpeg` for the `<img>` fallback, never
  *     the raw HEIC bytes.
- *   - D6: blurhash → 32x32 PNG data URI in `background-image` by default.
- *   - D7: width/height as HTML attributes, NOT inline aspect-ratio style.
+ *   - D-astro-image-adapter-6: blurhash → 32x32 PNG data URI in `background-image` by default.
+ *   - D-astro-image-adapter-7: width/height as HTML attributes, NOT inline aspect-ratio style.
  */
 
 import { averageColorFromBlurhash, decodeBlurhashToDataUri } from "./blurhash-decoder.js";
