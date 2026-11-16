@@ -93,6 +93,8 @@ run402 wallets current               # which wallet is active + how it was selec
 run402 --wallet kychon projects list # one-off override for a single command
 ```
 
+A wallet can also sign through an AWS KMS key it never holds: `run402 wallets import ops --kms <key-arn> [--aws-profile <sso-profile>]` adopts an `ECC_SECG_P256K1` / `SIGN_VERIFY` key by reference (`wallet.json` keeps the ARN and address, no secret), and every command then signs through KMS under `--wallet ops`. An expired SSO session fails `KMS_SIGNER_UNAVAILABLE` naming `aws sso login --profile <p>`. `run402 wallets send <amount> --to <address> [--from <smart-account>] --confirm` moves USDC on Base from the wallet, or from a Coinbase Smart Wallet it owns; without `--confirm` it only previews. The MCP sandbox refuses `wallets.send` with `VALUE_TRANSFER_REQUIRES_CLI`: hand the command to the human.
+
 Selection precedence for every command: `--wallet <name>` flag > `RUN402_WALLET` env > nearest `./.run402.json` directory binding > `wallets use` default > `default`. A `RUN402_WALLET` that disagrees with a `.run402.json` binding is a hard error - pass `--wallet`, `unset RUN402_WALLET`, or `run402 wallets unbind`. Non-default selections echo the wallet name on stderr so you always know which wallet you are on.
 
 ## Public Buzz/Nostr attribution
