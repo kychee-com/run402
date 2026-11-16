@@ -2206,8 +2206,11 @@ export interface ReleaseFunctionTool {
    *  unless its declaration set it to `false`. */
   annotations?: FunctionToolAnnotations;
   method: FunctionToolMethod;
-  /** The request path, with `{param}` for a segment filled from the arguments. */
-  path: string;
+  /** The request path, with `{param}` for a segment filled from the arguments.
+   *  `null` when the tool names no path and its function no longer has exactly
+   *  one exact `POST` route: the tool is then left out of `tools/list` and a
+   *  call answers `MCP_TOOL_ROUTE_UNAVAILABLE`. */
+  path: string | null;
 }
 
 /** MCP tools added, removed, or changed between two releases or by a plan, by name. */

@@ -345,7 +345,7 @@ export const SECRET_RETURNING_METHODS = {
   },
   "auth.createTestSession": {
     command: (projectId: unknown, opts: unknown) => `run402 dev --as ${arg(obj(opts).label, "<label>")}${projectFlag(projectId)}`,
-    why: "A test session carries a session cookie and a bearer token; `run402 dev --as` hands them to the local dev server without printing them.",
+    why: "A test session carries a session cookie, a bearer token and an MCP access token; `run402 dev --as` hands the cookie and bearer to the local dev server without printing them. To call the app's MCP tools as the test user, mint the session from an `@run402/sdk/node` script or `POST /auth/v1/test-sessions` with the service key, whose `examples.mcp` is a runnable call.",
   },
   "auth.setUserPassword": { command: (projectId: unknown) => `run402 auth set-password --token <bearer> --new <password>${projectFlag(projectId)}`, why: "An end user's access token is a bearer credential." },
   "auth.setPassword": { command: (projectId: unknown) => `run402 auth set-password --token <bearer> --new <password>${projectFlag(projectId)}`, why: "An end user's access token is a bearer credential." },
