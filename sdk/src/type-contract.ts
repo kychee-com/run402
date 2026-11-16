@@ -12,8 +12,11 @@ import type {
   KnownDeployResolveAuthorizationResult,
   KnownDeployResolveFallbackState,
   DeploySummary,
+  FunctionSpec,
   KnownDeployResolveMatch,
   PlanDiffEnvelope,
+  ReleaseFunctionEntry,
+  ReleaseFunctionTool,
   PublicStaticPathSpec,
   ReleaseRoutesSpec,
   ReleaseSnapshotInventory,
@@ -184,6 +187,18 @@ type _NoDeploySummaryTimings = DeploySummary["timings"];
 type _NoDeploySummaryCodeHashOld = DeploySummary["functions"]["changed"][number]["code_hash_old"];
 // @ts-expect-error route resources are replace lists, not path-keyed maps
 type _NoPathKeyedRoutes = NonNullable<ReleaseRoutesSpec>["/api/*"];
+// @ts-expect-error a function's release entry lists `tools`; the single `tool` field is gone
+type _NoReleaseFunctionTool = ReleaseFunctionEntry["tool"];
+// @ts-expect-error a release tool names its request with `method` and `path`, not `route`
+type _NoReleaseToolRoute = ReleaseFunctionTool["route"];
+// @ts-expect-error a function spec carries `tools` (an array), never a single `tool`
+type _NoFunctionSpecTool = FunctionSpec["tool"];
+const _ReleaseToolRequest: Pick<ReleaseFunctionTool, "method" | "path"> = { method: "GET", path: "/api/notes/{note_id}" };
+const _PlanToolsBucket: NonNullable<PlanDiffEnvelope["tools"]> = { added: ["add_note"], removed: [], changed: [] };
+const _SpecTools: NonNullable<FunctionSpec["tools"]> = [{ description: "d", input: { type: "object" } }];
+void _ReleaseToolRequest;
+void _PlanToolsBucket;
+void _SpecTools;
 const _KnownRouteResolveLiteral: KnownDeployResolveMatch = "route_function";
 const _KnownRouteStaticAliasResolveLiteral: KnownDeployResolveMatch = "route_static_alias";
 const _KnownRouteMethodMissResolveLiteral: KnownDeployResolveMatch = "route_method_miss";

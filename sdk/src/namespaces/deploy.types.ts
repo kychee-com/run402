@@ -342,6 +342,21 @@ export interface FunctionSpec {
    */
   triggers?: FunctionTriggerSpec[];
   /**
+   * The MCP tools this function answers at `https://<host>/_run402/mcp`. The
+   * release entry is the only carrier: the gateway never reads function
+   * source for tools, so an omitted `tools` means none (as with `triggers`),
+   * and a function the spec does not name keeps the tools it has.
+   *
+   * `@run402/sdk/node` fills it from the entry source of every function it
+   * reads (`export const tool = { … }` or `export const tools = { name: { … } }`,
+   * static literals, parsed and never run), sending `[]` when the source
+   * declares none; `@run402/astro` fills it for the `ssr` function from the
+   * project's endpoint files. Pass it yourself only when you carry the
+   * declarations as data: a stated `tools`, even `[]`, is sent as written and
+   * the source is not read for it.
+   */
+  tools?: FunctionToolSpec[];
+  /**
    * v1.52+: function class. When `"ssr"`, the gateway provisions the
    * Lambda with SnapStart enabled and routes invocations through the
    * origin ISR cache. Defaults to `"standard"` when omitted. Set by
@@ -395,6 +410,44 @@ export interface FunctionSpec {
    * leave it unchanged.
    */
   requireRole?: RequireRoleSpec | null;
+}
+
+/** The HTTP methods a tool's request may use. */
+export const FUNCTION_TOOL_METHODS = ["GET", "POST", "PATCH", "PUT", "DELETE"] as const;
+export type FunctionToolMethod = (typeof FUNCTION_TOOL_METHODS)[number];
+
+/** MCP tool annotations, with MCP's own member names. */
+export interface FunctionToolAnnotations {
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+}
+
+/**
+ * One MCP tool on a function's release entry (`FunctionSpec.tools`). A tool
+ * names one request the function answers: calling the tool sends `method` to
+ * `path`, each `{param}` filled from the arguments, the rest as the query
+ * string (`GET`, `DELETE`) or the JSON body (`POST`, `PATCH`, `PUT`).
+ */
+export interface FunctionToolSpec {
+  /** A valid MCP tool name, unique in the release. Omitted, the gateway uses the function name. */
+  name?: string;
+  title?: string;
+  /** 1 to 1024 characters: what tells an assistant when to call the tool. */
+  description: string;
+  /** JSON Schema for the arguments; root `type` is `"object"`. */
+  input: Record<string, unknown>;
+  /** A `GET` tool is listed read-only unless this sets `readOnlyHint: false`. */
+  annotations?: FunctionToolAnnotations;
+  /** Default `POST`. */
+  method?: FunctionToolMethod;
+  /**
+   * The request path, with `{param}` for a path segment filled from the
+   * arguments. Omitted, the tool is bound to the function's one exact `POST`
+   * route.
+   */
+  path?: string;
 }
 
 export interface FunctionTriggerRunSpec {
@@ -1905,6 +1958,8 @@ export interface PlanResponse {
   static_assets?: StaticAssetsDiff;
   public_paths?: PublicPathsDiff;
   site_settings?: SiteSettingsDiff;
+  /** MCP tools the plan adds, removes, or changes, by name; also under `diff.tools`. */
+  tools?: ToolsDiff;
   /** v1.48 unified-apply: one entry per `assets.put` item, with the
    *  AssetRef envelope resolved at plan time (URLs are deterministic
    *  from `(project_public_id, key, content_sha256)` so they're
@@ -2133,33 +2188,29 @@ export interface ReleaseFunctionEntry {
   runtime: string;
   timeout_seconds: number;
   memory_mb: number;
-  /** Present when the function's source exports a static `tool` declaration:
-   *  the app serves it as an MCP tool at `https://<host>/_run402/mcp`. */
-  tool?: ReleaseFunctionTool;
+  /** The MCP tools the function's release entry carries, present when it has
+   *  any: the app serves them at `https://<host>/_run402/mcp`. */
+  tools?: ReleaseFunctionTool[];
 }
 
-/** A function's MCP tool, as release reads report it. Declared in the
- *  function's source as `export const tool = { description, input, title?,
- *  annotations? }` (a literal; the gateway parses it at commit and never runs
- *  the code). A tool call is a POST of the arguments to `route`. */
+/** One of a function's MCP tools, as release reads report it: the release
+ *  entry's declaration with its name, method and path resolved. A tool call
+ *  sends `method` to `path`. */
 export interface ReleaseFunctionTool {
-  /** The function name, which is the tool name. */
   name: string;
-  description: string;
   title?: string;
+  description: string;
   /** JSON Schema for the arguments; root `type` is `"object"`. */
   input: Record<string, unknown>;
-  annotations?: {
-    readOnlyHint?: boolean;
-    destructiveHint?: boolean;
-    idempotentHint?: boolean;
-    openWorldHint?: boolean;
-  };
-  /** The one exact POST route the tool binds to. */
-  route: string | null;
+  /** As `tools/list` shows them: a `GET` tool carries `readOnlyHint: true`
+   *  unless its declaration set it to `false`. */
+  annotations?: FunctionToolAnnotations;
+  method: FunctionToolMethod;
+  /** The request path, with `{param}` for a segment filled from the arguments. */
+  path: string;
 }
 
-/** MCP tools added, removed, or changed between two releases, by name. */
+/** MCP tools added, removed, or changed between two releases or by a plan, by name. */
 export interface ToolsDiff {
   added: string[];
   removed: string[];
@@ -2353,6 +2404,7 @@ export interface FunctionsDiff {
       | "memory_mb"
       | "deps"
       | "triggers"
+      | "tools"
     >;
   }>;
 }
@@ -2381,6 +2433,8 @@ export interface PlanDiffEnvelope {
   subdomains: SubdomainsDiff;
   routes: RoutesDiff;
   static_assets: StaticAssetsDiff;
+  /** MCP tools the plan adds, removes, or changes, by name. */
+  tools?: ToolsDiff;
 }
 
 export interface ReleaseToReleaseDiff {
@@ -2400,7 +2454,7 @@ export interface ReleaseToReleaseDiff {
   subdomains: SubdomainsDiff;
   routes: RoutesDiff;
   static_assets: StaticAssetsDiff;
-  /** MCP tools added, removed, or changed (absent from older gateways). */
+  /** MCP tools added, removed, or changed, by name. */
   tools?: ToolsDiff;
 }
 
@@ -2450,6 +2504,9 @@ export interface DeployDiff {
   secrets?: SecretsDiff;
   routes?: RoutesDiff | Array<{ kind: "added" | "removed"; path: string }>;
   static_assets?: StaticAssetsDiff;
+  /** MCP tools the deploy adds, removes, or changes, by name. A function
+   *  sent with no `tools` loses the ones it had, and shows here as `removed`. */
+  tools?: ToolsDiff;
   /** Which browser URLs serve which release asset, and the public path mode. */
   public_paths?: PublicPathsDiff;
   /** The gateway-owned site settings (`noindex`, `embedding`, `sign_in_path`). */
@@ -2936,6 +2993,8 @@ export interface NormalizedFunctionSpec {
   /** Capability `apply-v1-function-deps` — see `FunctionSpec.deps`. */
   deps?: string[];
   triggers?: FunctionTriggerSpec[];
+  /** See `FunctionSpec.tools`. */
+  tools?: FunctionToolSpec[];
   /** v1.51+ — see `FunctionSpec.requireAuth`. */
   requireAuth?: boolean;
   /** v1.51+ — see `FunctionSpec.requireRole`. */

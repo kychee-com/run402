@@ -158,6 +158,28 @@ describe("functions.deploy", () => {
     assert.deepEqual(fn.config, { timeout_seconds: 20, memory_mb: 256 });
   });
 
+  it("forwards `tools` passed as data, and sends none when the isomorphic entry is given none", async () => {
+    const tools = [{ name: "cancel_booking", description: "Cancel a booking.", input: { type: "object" } }];
+    const withTools = applyOkFetch({ planId: "plan_tools" });
+    await makeSdk(withTools.fetch).functions.deploy("prj_known", {
+      name: "cancel",
+      code: "export default async () => new Response('ok')",
+      tools,
+    });
+    const sent = (JSON.parse(withTools.calls.find((c) => c.url.endsWith("/apply/v1/plans"))!.body as string) as { spec: Record<string, any> }).spec.functions.patch.set.cancel;
+    assert.deepEqual(sent.tools, tools);
+
+    // No reader is installed here (`@run402/sdk/node` installs one), so an
+    // export in the code is not read: the entry names no tools.
+    const without = applyOkFetch({ planId: "plan_none" });
+    await makeSdk(without.fetch).functions.deploy("prj_known", {
+      name: "cancel",
+      code: "export const tool = { description: 'd', input: { type: 'object' } }; export default async () => new Response('ok')",
+    });
+    const bare = (JSON.parse(without.calls.find((c) => c.url.endsWith("/apply/v1/plans"))!.body as string) as { spec: Record<string, any> }).spec.functions.patch.set.cancel;
+    assert.equal("tools" in bare, false);
+  });
+
   // D-scheduled-functions-7: a deploy declares its schedule as a schedule
   // trigger and keeps the function's other triggers; there is no `schedule` field.
   const EMAIL = { id: "inbox", type: "email", mailbox: "support", events: ["reply_received"], run: { event_type: "mail", payload: {} } };

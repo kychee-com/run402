@@ -52,6 +52,8 @@ import {
 } from "../../core-dist/config.js";
 import { Run402, type PayExecutor, type ProjectAuthMode, type Run402Options } from "../index.js";
 import { installNodeVaultAeadBackend, installNodeVaultHashBackend } from "./vault-native-crypto.js";
+import { installFunctionToolLifter } from "../function-tools.js";
+import { liftFunctionTools } from "./tool-declarations.js";
 import { sdkFetch } from "./http-dispatcher.js";
 
 // vault-native-bulk-crypto (design D1): the bulk frame AEAD is sync and
@@ -63,6 +65,11 @@ installNodeVaultAeadBackend();
 // vault-native-hash: same doctrine, second slot — the protocol SHA-256
 // moves to `node:crypto` after a live probe; any failure keeps `@noble`.
 installNodeVaultHashBackend();
+// A function's MCP tools ride its release entry, and reading the `tool` /
+// `tools` export beside a handler means parsing JavaScript, which is
+// Node-only. Installed here, the same way: `apply` then fills
+// `functions.<name>.tools` from every function source it reads.
+installFunctionToolLifter(liftFunctionTools);
 import type { CredentialsProvider } from "../credentials.js";
 import { LocalError } from "../errors.js";
 import type { Client, Run402ClientMetadata } from "../kernel.js";
@@ -331,6 +338,15 @@ export type {
 } from "./sites-node.js";
 export { fileSetFromDir, normalizeRelPath } from "./files.js";
 export type { FileSetFromDirOptions } from "./files.js";
+// The one reader of `export const tool` / `export const tools`: source in,
+// release entries or one refusal out, by parsing and never by running.
+// `@run402/astro` calls it for every server-rendered endpoint file.
+export { endpointToolPath, extractToolDeclarations, liftFunctionTools } from "./tool-declarations.js";
+export type {
+  EndpointToolContext,
+  ExtractToolDeclarationsOptions,
+  ToolExtraction,
+} from "./tool-declarations.js";
 // v1.48 unified-apply: Node-only `assets.{uploadDir,syncDir,prepareDir,
 // putMany}` ergonomics + `dir(path)` LocalDirRef helper. The
 // `dir(path)` call is synchronous (per design D12); the filesystem
@@ -941,7 +957,10 @@ export {
   ValueTransferRequiresCliError,
   Run402DeployError,
   EMPTY_STATIC_MANIFEST_METADATA,
+  FUNCTION_TOOL_METHODS,
   ROUTE_HTTP_METHODS,
+  findDuplicateToolName,
+  isValidMcpToolName,
   Ci,
   Deploy,
   CI_SESSION_CREDENTIALS,

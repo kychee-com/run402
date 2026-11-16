@@ -3,7 +3,7 @@
  * Maps to `/projects/v1/admin/:id/functions*` and `/functions/v1/:name`.
  */
 
-import type { FunctionAppRepoTriggerSpec, FunctionEmailTriggerSpec, FunctionScheduleTriggerSpec, FunctionTriggerRunSpec } from "./deploy.types.js";
+import type { FunctionAppRepoTriggerSpec, FunctionEmailTriggerSpec, FunctionScheduleTriggerSpec, FunctionToolSpec, FunctionTriggerRunSpec } from "./deploy.types.js";
 
 export interface FunctionConfig {
   /** Timeout in seconds. Tier limits apply. */
@@ -43,6 +43,13 @@ export interface FunctionDeployOptions {
   schedule?: string | null;
   /** IANA time zone the schedule's cron is read in (default `UTC`). Only with `schedule`. */
   timezone?: string;
+  /**
+   * The function's MCP tools, as data. Leave it out with `@run402/sdk/node`:
+   * the deploy reads `export const tool` / `export const tools` from `code`
+   * and sends them. A deploy replaces the function, tools included, so with
+   * neither a reader nor this option the function has none afterwards.
+   */
+  tools?: FunctionToolSpec[];
 }
 
 export interface FunctionDeployResult {

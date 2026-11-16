@@ -112,12 +112,25 @@ Use `run402 up --check` for local validation and `run402 up --plan` for gateway 
 | `config` | `object` | no | See the downloadable schema for constraints. |
 | `deps` | `array` | no | See the downloadable schema for constraints. |
 | `triggers` | `array` | no | See the downloadable schema for constraints. |
+| `tools` | `array` | no | The MCP tools this function answers at /_run402/mcp. Usually left out: run402 deploy and run402 up read `export const tool = { ... }` or `export const tools = { name: { ... } }` from the function's source (static literals, parsed and never run) and fill this in, [] when the source declares none. Written here, it is sent as written and the source is not read. The release entry is the only carrier: a function sent with no tools has none. |
 | `requireAuth` | `boolean` | no | See the downloadable schema for constraints. |
 | `require_auth` | `boolean` | no | See the downloadable schema for constraints. |
 | `requireRole` | `oneOf` | no | See the downloadable schema for constraints. |
 | `require_role` | `oneOf` | no | See the downloadable schema for constraints. |
 | `class` | `schema` | no | See the downloadable schema for constraints. |
 | `capabilities` | `array` | no | See the downloadable schema for constraints. |
+
+<h3 id="release-functionTool">functionTool</h3>
+
+| Property | Shape | Required | Description |
+|---|---|---|---|
+| `name` | `string` | no | A valid MCP tool name, unique in the release. Omitted, the function name. |
+| `title` | `string` | no | See the downloadable schema for constraints. |
+| `description` | `string` | yes | What tells an assistant when to call the tool. |
+| `input` | `object` | yes | JSON Schema for the arguments; its root type is "object". Every {param} of path is a required string or integer property. |
+| `annotations` | `object` | no | See the downloadable schema for constraints. |
+| `method` | `schema` | no | Default POST. |
+| `path` | `string` | no | The request path, with {param} for a segment filled from the arguments. Omitted, the function's one exact POST route. |
 
 <h3 id="release-functionTrigger">functionTrigger</h3>
 

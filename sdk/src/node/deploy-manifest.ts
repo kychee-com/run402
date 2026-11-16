@@ -328,6 +328,7 @@ const MANIFEST_FUNCTION_FIELDS = new Set([
   "config",
   "deps",
   "triggers",
+  "tools",
   "requireAuth",
   "requireRole",
   "require_auth",
@@ -1251,6 +1252,14 @@ function mapFunction(
   if (raw.config !== undefined) out.config = mapFunctionConfig(raw.config);
   if (raw.deps !== undefined) out.deps = [...raw.deps];
   if (raw.triggers !== undefined) out.triggers = raw.triggers;
+  // `tools` written in the manifest is carried as data (the spec check
+  // validates each entry); left out, a deploy reads the function's source.
+  if (raw.tools !== undefined) {
+    if (!Array.isArray(raw.tools)) {
+      throw new LocalError("Deploy manifest function tools must be an array of tool entries", CONTEXT);
+    }
+    out.tools = raw.tools.map((tool) => (tool && typeof tool === "object" && !Array.isArray(tool) ? { ...tool } : tool));
+  }
   const rawRecord = raw as Record<string, unknown>;
   const requireAuth = rawRecord.requireAuth ?? rawRecord.require_auth;
   const requireRole = rawRecord.requireRole ?? rawRecord.require_role;

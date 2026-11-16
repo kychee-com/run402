@@ -614,8 +614,15 @@ export {
   isControlPlaneSessionCredentials,
 } from "./control-plane-credentials.js";
 export type * from "./control-plane-credentials.js";
+export { findDuplicateToolName, isValidMcpToolName } from "./function-tools.js";
+export type {
+  McpToolErrorCode,
+  ToolDeclarationProblem,
+  ToolNameGroup,
+} from "./function-tools.js";
 export {
   EMPTY_STATIC_MANIFEST_METADATA,
+  FUNCTION_TOOL_METHODS,
   ROUTE_HTTP_METHODS,
   buildDeployResolveSummary,
   isDeployResolveRouteHit,

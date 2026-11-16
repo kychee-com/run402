@@ -279,6 +279,13 @@
             "$ref": "#/$defs/functionTrigger"
           }
         },
+        "tools": {
+          "type": "array",
+          "description": "The MCP tools this function answers at /_run402/mcp. Usually left out: run402 deploy and run402 up read `export const tool = { ... }` or `export const tools = { name: { ... } }` from the function's source (static literals, parsed and never run) and fill this in, [] when the source declares none. Written here, it is sent as written and the source is not read. The release entry is the only carrier: a function sent with no tools has none.",
+          "items": {
+            "$ref": "#/$defs/functionTool"
+          }
+        },
         "requireAuth": {
           "type": "boolean"
         },
@@ -312,6 +319,70 @@
             "type": "string",
             "minLength": 1
           }
+        }
+      }
+    },
+    "functionTool": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One MCP tool. A tool names one request its function answers: calling it sends `method` to `path`, each {param} filled from the arguments, the rest as the query string (GET, DELETE) or the JSON body (POST, PATCH, PUT). A GET tool is listed read-only unless annotations.readOnlyHint is false.",
+      "required": [
+        "description",
+        "input"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]{1,128}$",
+          "description": "A valid MCP tool name, unique in the release. Omitted, the function name."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "description": "What tells an assistant when to call the tool."
+        },
+        "input": {
+          "type": "object",
+          "description": "JSON Schema for the arguments; its root type is \"object\". Every {param} of path is a required string or integer property."
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "readOnlyHint": {
+              "type": "boolean"
+            },
+            "destructiveHint": {
+              "type": "boolean"
+            },
+            "idempotentHint": {
+              "type": "boolean"
+            },
+            "openWorldHint": {
+              "type": "boolean"
+            }
+          }
+        },
+        "method": {
+          "enum": [
+            "GET",
+            "POST",
+            "PATCH",
+            "PUT",
+            "DELETE"
+          ],
+          "description": "Default POST."
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "The request path, with {param} for a segment filled from the arguments. Omitted, the function's one exact POST route."
         }
       }
     },

@@ -49,6 +49,22 @@ describe("ReleaseSpec JSON Schema", () => {
     assert.equal(functionSpec.properties.capabilities.items.type, "string");
   });
 
+  it("documents a function's MCP tools as an array of entries, never a single tool", () => {
+    const schema = readSchema();
+    const functionSpec = schema.$defs.functionSpec;
+    const tool = schema.$defs.functionTool;
+
+    assert.equal(functionSpec.properties.tool, undefined);
+    assert.equal(functionSpec.properties.tools.type, "array");
+    assert.equal(functionSpec.properties.tools.items.$ref, "#/$defs/functionTool");
+    assert.match(functionSpec.properties.tools.description, /only carrier/);
+    assert.equal(tool.additionalProperties, false);
+    assert.deepEqual(tool.required, ["description", "input"]);
+    assert.deepEqual(Object.keys(tool.properties).sort(), ["annotations", "description", "input", "method", "name", "path", "title"]);
+    assert.deepEqual(tool.properties.method.enum, ["GET", "POST", "PATCH", "PUT", "DELETE"]);
+    assert.deepEqual(Object.keys(tool.properties.annotations.properties).sort(), ["destructiveHint", "idempotentHint", "openWorldHint", "readOnlyHint"]);
+  });
+
   it("covers public paths, routes, subdomains, and known cache class documentation", () => {
     const schema = readSchema();
 

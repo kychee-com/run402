@@ -46,6 +46,7 @@
     "@noble/hashes": "^2.0.1",
     "@run402/nwc": "^0.1.0",
     "@scure/base": "1.2.6",
+    "acorn": "^8.18.0",
     "undici": "^7.29.0"
   },
   "peerDependencies": {

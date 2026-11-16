@@ -79,13 +79,18 @@ const ALLOWED = {
     "@noble/hashes", "@run402/nwc", "@scure/base", "@typescript/native", "@x402/evm", "@x402/fetch",
     "acorn", "mppx", "quickjs-emscripten", "undici", "viem",
   ],
+  // acorn: the SDK reads a function's `tool` / `tools` export by parsing its
+  // source, and a JavaScript parser is not small enough to own. One publisher,
+  // no dependencies of its own, no install script. `@run402/sdk` declares it;
+  // `run402` ships the SDK's build in its own tarball, so it declares it too
+  // (run402-mcp already did, for the `run` sandbox).
   run402: [
     "@aws-sdk/client-kms", "@hpke/chacha20poly1305", "@hpke/core", "@noble/ciphers", "@noble/curves",
-    "@noble/hashes", "@run402/nwc", "@scure/base", "@x402/evm", "@x402/fetch", "mppx", "undici", "viem",
+    "@noble/hashes", "@run402/nwc", "@scure/base", "@x402/evm", "@x402/fetch", "acorn", "mppx", "undici", "viem",
   ],
   "@run402/sdk": [
     "@hpke/chacha20poly1305", "@hpke/core", "@noble/ciphers", "@noble/curves", "@noble/hashes",
-    "@run402/nwc", "@scure/base", "undici",
+    "@run402/nwc", "@scure/base", "acorn", "undici",
   ],
 };
 const INSTALL_HOOKS = ["preinstall", "install", "postinstall"];

@@ -67,6 +67,7 @@ import type {
   EdgeCoherenceWaitOptions,
   EdgeCoherenceWaitResult,
   FileSet,
+  FunctionToolSpec,
   FunctionTriggerRunSpec,
   FunctionTriggerSpec,
   FsFileSource,
@@ -107,6 +108,13 @@ import {
 } from "./assets-validation.js";
 import type { TierStatusResult } from "./tier.js";
 import { withSiteRemovalSummaries } from "./site-removal-summary.js";
+import {
+  checkFunctionToolEntry,
+  findDuplicateToolName,
+  installedFunctionToolLifter,
+  toolDeclarationError,
+  type ToolNameGroup,
+} from "../function-tools.js";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -1356,6 +1364,7 @@ function functionToCoreSpec(fn: NormalizedFunctionSpec): Record<string, unknown>
     ...(fn.config !== undefined ? { config: fn.config } : {}),
     ...(fn.deps !== undefined ? { deps: fn.deps } : {}),
     ...(fn.triggers !== undefined ? { triggers: fn.triggers } : {}),
+    ...(fn.tools !== undefined ? { tools: fn.tools } : {}),
     ...(fn.requireAuth !== undefined ? { requireAuth: fn.requireAuth } : {}),
     ...(fn.requireRole !== undefined ? { requireRole: fn.requireRole } : {}),
     ...(fn.class !== undefined ? { class: fn.class } : {}),
@@ -1379,6 +1388,9 @@ function functionToWire(fn: NormalizedFunctionSpec): Record<string, unknown> {
       : {}),
     ...(fn.deps !== undefined ? { deps: fn.deps } : {}),
     ...(fn.triggers !== undefined ? { triggers: fn.triggers } : {}),
+    // A tool entry's members are single words or MCP's own annotation names,
+    // so the SDK shape is the wire shape.
+    ...(fn.tools !== undefined ? { tools: fn.tools } : {}),
     ...(fn.requireAuth !== undefined ? { require_auth: fn.requireAuth } : {}),
     ...(fn.requireRole !== undefined
       ? { require_role: fn.requireRole === null ? null : requireRoleToWire(fn.requireRole) }
@@ -3272,6 +3284,7 @@ const FUNCTION_SPEC_FIELDS = new Set([
   "config",
   "deps",
   "triggers",
+  "tools",
   "schedule",
   "requireAuth",
   "requireRole",
@@ -3482,6 +3495,27 @@ function validateFunctionMap(value: unknown, resource: string): void {
       requireObject(entry.files, `${resource}.${name}.files`);
     }
     validateFunctionTriggers(entry.triggers, `${resource}.${name}.triggers`);
+    validateFunctionTools(entry.tools, `${resource}.${name}.tools`, name);
+  }
+}
+
+/**
+ * `tools` passed as data obeys the rules a declaration read from source does,
+ * and is refused with the same codes before any request.
+ */
+function validateFunctionTools(value: unknown, resource: string, functionName: string): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) throw invalidSpec(`ReleaseSpec.${resource} must be an array`, resource);
+  for (const [index, entry] of value.entries()) {
+    const fieldPath = `${resource}[${index}]`;
+    const checked = checkFunctionToolEntry(entry, fieldPath);
+    if (!checked.ok) {
+      const name = isRecord(entry) && typeof entry.name === "string" ? entry.name : undefined;
+      throw toolDeclarationError(
+        { ...checked.problem, file: null, ...(name !== undefined ? { tool: name } : {}) },
+        { functionName },
+      );
+    }
   }
 }
 
@@ -4406,6 +4440,9 @@ function normalizePlanResponse(plan: PlanResponse): PlanResponse {
   const warnings = withSiteRemovalSummaries(Array.isArray(raw.warnings) ? raw.warnings : []);
   const missingContent = Array.isArray(raw.missing_content) ? raw.missing_content : [];
   if (raw.kind === "plan_response") {
+    // The plan's tools bucket sits beside the other buckets; a gateway that
+    // nests it under `diff` is read the same way.
+    const tools = raw.tools ?? (raw.diff as DeployDiff | undefined)?.tools;
     const diff: DeployDiff = {
       is_noop: raw.is_noop,
       summary: raw.summary,
@@ -4417,6 +4454,7 @@ function normalizePlanResponse(plan: PlanResponse): PlanResponse {
       subdomains: raw.subdomains,
       routes: raw.routes,
       static_assets: raw.static_assets,
+      ...(tools ? { tools } : {}),
       ...(raw.public_paths ? { public_paths: raw.public_paths } : {}),
       ...(raw.site_settings ? { site_settings: raw.site_settings } : {}),
     };
@@ -4832,15 +4870,16 @@ async function normalizeReleaseSpec(
   if (spec.functions) {
     const fns: NormalizedFunctionsSpec = {};
     if (spec.functions.replace) {
-      fns.replace = await normalizeFunctionMap(spec.functions.replace, rememberRelease);
+      fns.replace = await normalizeFunctionMap(spec.functions.replace, rememberRelease, "functions.replace");
     }
     if (spec.functions.patch) {
       fns.patch = {};
       if (spec.functions.patch.set) {
-        fns.patch.set = await normalizeFunctionMap(spec.functions.patch.set, rememberRelease);
+        fns.patch.set = await normalizeFunctionMap(spec.functions.patch.set, rememberRelease, "functions.patch.set");
       }
       if (spec.functions.patch.delete) fns.patch.delete = spec.functions.patch.delete;
     }
+    assertUniqueToolNames(fns);
     normalized.functions = fns;
   }
 
@@ -4909,10 +4948,11 @@ async function normalizeReleaseSpec(
 async function normalizeFunctionMap(
   map: Record<string, FunctionSpecInput>,
   remember: (r: ResolvedContent) => ContentRef,
+  resource: string,
 ): Promise<Record<string, NormalizedFunctionSpec>> {
   const out: Record<string, NormalizedFunctionSpec> = {};
   for (const [name, fn] of Object.entries(map)) {
-    out[name] = await normalizeFunction(fn, remember);
+    out[name] = await normalizeFunction(fn, remember, { name, resource: `${resource}.${name}` });
   }
   return out;
 }
@@ -4924,6 +4964,7 @@ type FunctionSpecInput = NonNullable<
 async function normalizeFunction(
   fn: FunctionSpecInput,
   remember: (r: ResolvedContent) => ContentRef,
+  where: { name: string; resource: string },
 ): Promise<NormalizedFunctionSpec> {
   const out: NormalizedFunctionSpec = {
     runtime: fn.runtime ?? "node22",
@@ -4937,14 +4978,109 @@ async function normalizeFunction(
   if (fn.class !== undefined) out.class = fn.class;
   if (fn.capabilities !== undefined) out.capabilities = [...fn.capabilities];
 
+  // The entry source, when this call reads it: what a tool reader is given.
+  let entry: { text: () => Promise<string>; file: string | null; field: string } | null = null;
   if (fn.source !== undefined) {
     const resolved = await resolveContent(fn.source, "function source");
     out.source = remember(resolved);
+    if (!isPreResolvedContent(fn.source)) {
+      entry = {
+        text: async () => new TextDecoder().decode(await resolved.reader()),
+        file: fsPathOf(fn.source),
+        field: `${where.resource}.source`,
+      };
+    }
   }
   if (fn.files) {
     out.files = await normalizeFileSet(fn.files, remember);
+    const entrySource = fn.entrypoint && !isLocalDirRef(fn.files) ? fn.files[fn.entrypoint] : undefined;
+    if (entry === null && entrySource !== undefined && isRereadableContent(entrySource)) {
+      entry = {
+        text: async () => new TextDecoder().decode(await (await resolveContent(entrySource, "function entrypoint")).reader()),
+        file: fsPathOf(entrySource),
+        field: `${where.resource}.files[${JSON.stringify(fn.entrypoint)}]`,
+      };
+    }
+  }
+
+  // A stated `tools`, even `[]`, is sent as written. Otherwise the tools are
+  // read from the entry source, when a reader is installed (`@run402/sdk/node`
+  // installs one) and this call read that source: `[]` when it declares none.
+  if (fn.tools !== undefined) {
+    out.tools = fn.tools.map((tool) => ({ ...tool }));
+  } else {
+    const lift = installedFunctionToolLifter();
+    if (lift && entry) {
+      out.tools = lift({ functionName: where.name, source: await entry.text(), file: entry.file, sourceField: entry.field });
+    }
   }
   return out;
+}
+
+/** A `ContentRef` (bare, or wrapped as `{ data }`): bytes already in CAS that this call never reads. */
+function isPreResolvedContent(source: ContentSource): boolean {
+  if (isContentRef(source)) return true;
+  if (isDataWrapper(source)) return isPreResolvedContent(source.data);
+  return false;
+}
+
+/** A source that can be read again after normalization read it once (everything but a stream or a `ContentRef`). */
+function isRereadableContent(source: ContentSource): boolean {
+  if (isDataWrapper(source)) return isRereadableContent(source.data);
+  return !isContentRef(source) && !isReadableStream(source);
+}
+
+function isDataWrapper(source: unknown): source is { data: ContentSource } {
+  return (
+    typeof source === "object" &&
+    source !== null &&
+    !Array.isArray(source) &&
+    !(source instanceof Uint8Array) &&
+    !(source instanceof ArrayBuffer) &&
+    !(typeof Blob !== "undefined" && source instanceof Blob) &&
+    !isReadableStream(source) &&
+    !isFsFileSource(source) &&
+    "data" in source
+  );
+}
+
+/** The path on disk a source reads, when it is a file handle. */
+function fsPathOf(source: ContentSource): string | null {
+  if (isFsFileSource(source)) return source.path;
+  if (isDataWrapper(source)) return fsPathOf(source.data);
+  return null;
+}
+
+/**
+ * Tool names are unique in a release. Two tools of this spec sharing one is
+ * refused here, naming both functions; the gateway checks the functions the
+ * spec does not name.
+ */
+function assertUniqueToolNames(fns: NormalizedFunctionsSpec): void {
+  const groups: ToolNameGroup[] = [];
+  const collect = (map: Record<string, NormalizedFunctionSpec> | undefined): void => {
+    for (const [name, fn] of Object.entries(map ?? {})) {
+      if (fn.tools && fn.tools.length > 0) groups.push({ owner: name, tools: fn.tools as FunctionToolSpec[], defaultName: name });
+    }
+  };
+  collect(fns.replace);
+  collect(fns.patch?.set);
+  const duplicate = findDuplicateToolName(groups);
+  if (!duplicate) return;
+  const [first, second] = duplicate.owners;
+  const where = first === second
+    ? `function \`${first}\` declares it twice`
+    : `functions \`${first}\` and \`${second}\` both declare it`;
+  throw toolDeclarationError(
+    {
+      code: "MCP_TOOL_NAME_DUPLICATE",
+      message: `Two tools are named \`${duplicate.name}\`: ${where}. A tool name is unique in a release; rename one.`,
+      file: null,
+      field_path: `functions.${second}.tools`,
+      tool: duplicate.name,
+    },
+    { functionName: second, functions: [...new Set(duplicate.owners)] },
+  );
 }
 
 function normalizeFunctionTriggers(

@@ -212,6 +212,9 @@ export class Functions {
       fn.config = { timeoutSeconds: opts.config.timeout, memoryMb: opts.config.memory };
     }
     if (opts.deps !== undefined) fn.deps = opts.deps;
+    // Tools passed as data are sent as written; otherwise the Node entry's
+    // reader fills them from `code` when the deploy normalizes this spec.
+    if (opts.tools !== undefined) fn.tools = opts.tools;
     // A deploy replaces the function, triggers included: keep the ones it
     // has, and declare `schedule` as a schedule trigger beside them.
     const current = await currentTriggers(this, projectId, opts.name);
