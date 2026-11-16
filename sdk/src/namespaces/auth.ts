@@ -230,8 +230,18 @@ export interface TestSessionResult {
    *  `https://<name>.run402.app` then `https://<name>.run402.com`, then custom
    *  domains whose web serving is effective. Empty when the project has no host yet. */
   app_origins: string[];
-  /** `ssr` curls `app_origins[0]` with the cookie; null when there is no origin. */
-  examples: { ssr: string | null; rest: string };
+  /**
+   * The app's MCP endpoint and a token to call it as the test user, present
+   * when the project has a host that serves its routes: `url` is
+   * `/_run402/mcp` on `app_origins[0]`, and `access_token` is an MCP access
+   * token valid only at that resource and for no longer than the test
+   * session. POST `tools/list` or `tools/call` to `url` with
+   * `Authorization: Bearer <access_token>`: no browser, no consent screen.
+   */
+  mcp?: { url: string; access_token: string; expires_at: string };
+  /** `ssr` curls `app_origins[0]` with the cookie, and `mcp` is a ready-to-run
+   *  `tools/list` call against `mcp.url`; both are null when there is no origin. */
+  examples: { ssr: string | null; rest: string; mcp?: string | null };
   test_mode: Record<string, unknown>;
   /** Present only when `app_origins` is empty: one `deploy` action saying how
    *  a release claims a subdomain. */

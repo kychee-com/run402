@@ -641,7 +641,32 @@ async function mockFetch(input, init) {
           content_type: "text/html",
         },
       ],
-      functions: [],
+      functions: [
+        {
+          name: "api",
+          code_hash: "c".repeat(64),
+          runtime: "node22",
+          timeout_seconds: 10,
+          memory_mb: 128,
+          tools: [
+            {
+              name: "list_notes",
+              description: "List notes.",
+              input: { type: "object", properties: { tag: { type: "string" } } },
+              annotations: { readOnlyHint: true },
+              method: "GET",
+              path: "/api/notes",
+            },
+            {
+              name: "add_note",
+              description: "Add a note.",
+              input: { type: "object" },
+              method: "POST",
+              path: "/api/notes",
+            },
+          ],
+        },
+      ],
       secrets: { keys: [] },
       subdomains: { names: [] },
       routes: {
@@ -694,6 +719,7 @@ async function mockFetch(input, init) {
         removed: [],
         changed: [],
       },
+      tools: { added: ["add_note"], removed: ["search"], changed: ["list_notes"] },
     }));
   }
   if (pathNoQuery.match(/^\/apply\/v1\/releases\/[^/]+$/) && method === "GET") {
@@ -2641,6 +2667,21 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.release.warnings[0].code, "ROUTE_SHADOWS_STATIC_PATH");
   });
 
+  it("deploy releases active shows each function's MCP tools with their method and path", async () => {
+    const { run } = await import("./cli/lib/deploy.mjs");
+    captureStart();
+    await run(["releases", "active", "--project", "prj_test123"]);
+    captureStop();
+    const [api] = JSON.parse(captured()).release.functions;
+    assert.equal(api.tool, undefined, "the single `tool` field is gone; a function lists `tools`");
+    assert.deepEqual(
+      api.tools.map((tool) => [tool.name, tool.method, tool.path]),
+      [["list_notes", "GET", "/api/notes"], ["add_note", "POST", "/api/notes"]],
+    );
+    assert.deepEqual(api.tools[0].annotations, { readOnlyHint: true });
+    assert.equal(api.tools[0].description, "List notes.");
+  });
+
   it("deploy releases diff wraps the diff payload", async () => {
     const { run } = await import("./cli/lib/deploy.mjs");
     captureStart();
@@ -2662,6 +2703,7 @@ describe("CLI e2e happy path", () => {
     assert.equal(body.diff.kind, "release_diff");
     assert.deepEqual(body.diff.migrations.applied_between_releases, ["001_init"]);
     assert.equal(body.diff.routes.added[0].pattern, "/api/*");
+    assert.deepEqual(body.diff.tools, { added: ["add_note"], removed: ["search"], changed: ["list_notes"] });
   });
 
   it("deploy releases get rejects unknown flags before network (GH-329)", async () => {

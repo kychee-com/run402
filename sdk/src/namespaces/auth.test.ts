@@ -608,6 +608,39 @@ describe("auth.createTestSession", () => {
     assert.deepEqual(result, bundle);
   });
 
+  it("returns the MCP token and its ready-to-run tools/list call unchanged", async () => {
+    const mcp = { url: "https://notes.run402.app/_run402/mcp", access_token: "mcp.access", expires_at: "2026-11-16T14:00:00.000Z" };
+    const bundle = {
+      user: { id: "u_1", label: "alice", email: "alice@prj_known.test.invalid", is_test: true },
+      session: { session_id: "s_1", amr: ["test_session"] },
+      access_token: "access.jwt",
+      token_type: "bearer",
+      expires_in: 7200,
+      app_origins: ["https://notes.run402.app"],
+      mcp,
+      examples: { ssr: "curl ...", rest: "curl ...", mcp: "curl -X POST https://notes.run402.app/_run402/mcp ..." },
+    };
+    const { fetch } = mockFetch(() => jsonResponse(bundle, 201));
+    const result = await makeSdk(makeCreds(), fetch).auth.createTestSession("prj_known", { label: "alice" });
+    assert.deepEqual(result.mcp, mcp);
+    assert.equal(result.examples.mcp, bundle.examples.mcp);
+  });
+
+  it("stays a secret-bearing call: a client that may not return secrets refuses it before requesting", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}, 201));
+    const sdk = new Run402({
+      apiBase: "https://api.example.test",
+      credentials: makeCreds(),
+      fetch,
+      capabilities: { returnSecrets: false },
+    });
+    await assert.rejects(
+      sdk.auth.createTestSession("prj_known", { label: "alice" }),
+      (err: unknown) => err instanceof Run402Error && err.code === "SECRET_REQUIRES_CLI",
+    );
+    assert.equal(calls.length, 0);
+  });
+
   for (const label of ["Alice", "alice@example.com", "-alice", "", "a".repeat(33)]) {
     it(`refuses label ${JSON.stringify(label)} before requesting`, async () => {
       const { fetch, calls } = mockFetch(() => {

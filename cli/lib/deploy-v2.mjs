@@ -130,6 +130,8 @@ Options:
   --print-manifest        Export snake_case authoring JSON relative to the original manifest
                           directory. Unsupported constructs fail; no gateway calls or uploads.
   --plan                  Ask the gateway for a reviewed plan. No upload or commit.
+                          The plan's diff names what would change; diff.tools lists
+                          the MCP tools it would add, remove, or change.
   --no-rehearse           Skip the automatic rehearsal. By default a migration-bearing plan
                           against a project with a live release is rehearsed on a contained
                           branch and committed only on a passing report (result.rehearsal);
@@ -187,6 +189,19 @@ Function capabilities:
   functions.replace.<name>.capabilities is an array of runtime capability strings.
   Framework adapters use it for contracts such as "astro.ssr.v1"; omit it for
   ordinary user-authored functions unless a documented helper requires it.
+
+MCP tools:
+  A function file declares its tools beside the handler, as static literals:
+    export const tool  = { description: "...", input: { type: "object", ... } };
+    export const tools = { list_notes: { method: "GET", path: "/api/notes", ... }, add_note: { ... } };
+  This command reads the export by parsing the source (never running it) and sends
+  it as functions.<name>.tools, [] when the source declares none. A declaration it
+  cannot carry fails here, before any request: MCP_TOOL_NOT_STATIC, MCP_TOOL_SCHEMA_INVALID,
+  MCP_TOOL_NAME_INVALID, MCP_TOOL_NAME_DUPLICATE, with the file, line and field.
+  The release entry is the only carrier: a manifest that writes "tools" on a function
+  is sent as written, and a function sent with no tools has none.
+  run402 deploy --plan shows diff.tools; run402 deploy releases active shows each
+  function's tools with their method and path.
 
 Internationalization (routed functions):
   "i18n": { "defaultLocale": "en", "locales": ["en", "es", "fr"], "detect": ["cookie:wl_locale", "accept-language"] }
@@ -325,8 +340,11 @@ Subcommands:
   diff      Diff two release targets
 
 Output:
-  get/active: { "release": {...} }  # includes route inventory and inventory warnings when returned
-  diff:       { "diff": {...} }     # includes route added/removed/changed diff buckets
+  get/active: { "release": {...} }  # includes route inventory and inventory warnings when returned;
+                                    # functions[].tools lists each function's MCP tools
+                                    # (name, description, input, method, path)
+  diff:       { "diff": {...} }     # includes route added/removed/changed diff buckets, and
+                                    # tools.added/removed/changed by tool name
 `;
 
 const RELEASES_GET_HELP = `run402 deploy releases get — Fetch a release inventory by id
@@ -339,7 +357,8 @@ Options:
   --site-limit <n>        Maximum site path entries to include (gateway default: 5000)
 
 Output:
-  stdout: { "release": {...} }  # preserves full routes inventory and warnings
+  stdout: { "release": {...} }  # preserves full routes inventory and warnings;
+                                # functions[].tools lists each function's MCP tools
 `;
 
 const RELEASES_ACTIVE_HELP = `run402 deploy releases active — Fetch the active release inventory
@@ -352,7 +371,8 @@ Options:
   --site-limit <n>        Maximum site path entries to include (gateway default: 5000)
 
 Output:
-  stdout: { "release": {...} }  # preserves full routes inventory and warnings
+  stdout: { "release": {...} }  # preserves full routes inventory and warnings;
+                                # functions[].tools lists each function's MCP tools
 `;
 
 const RELEASES_DIFF_HELP = `run402 deploy releases diff — Diff two release targets
@@ -367,7 +387,8 @@ Options:
   --limit <n>             Maximum entries per site diff bucket (gateway default: 1000)
 
 Output:
-  stdout: { "diff": {...} }  # preserves routes.added/removed/changed
+  stdout: { "diff": {...} }  # preserves routes.added/removed/changed and
+                             # tools.added/removed/changed (MCP tool names)
 `;
 
 const RESOLVE_HELP = `run402 deploy resolve — Explain what a Run402 public URL would serve
