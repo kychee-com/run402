@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import type { ToolDeclarations } from '@run402/functions';
 import { addNote, listNotes } from '../../lib/notes';
 
 // The app's MCP tools, declared beside the handlers the site already has.
@@ -26,7 +27,7 @@ export const tools = {
       required: ['title'],
     },
   },
-};
+} satisfies ToolDeclarations;
 
 const PRIVATE = { 'Cache-Control': 'private, no-store' };
 

@@ -2,8 +2,8 @@
   "version": 1,
   "contributions": {
     "gateway": {
-      "revision": "8f86bf4f7ab7c2a36bd5d7954d654d2125baa291",
-      "sourceDigest": "20ea3c2c25a0534876901883a2cfc08c630d33da30653cacb84a5baa710e3910"
+      "revision": "84841da488fd8e81dde85c60d442009487ae7570",
+      "sourceDigest": "62beccbc93b18587a573ea6a51720a19868e6b5ad61677d6c7c714460d3717b3"
     },
     "core": {
       "revision": "66de87117369a17c93d914cebc27c9e1e7ce7af7"
@@ -4050,9 +4050,13 @@
         {
           "owner": "public",
           "source": "sdk/src/namespaces/deploy.ts"
+        },
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
-      "topic": "/errors/client/#MCP_TOOL_NAME_DUPLICATE"
+      "topic": "/errors/gateway/#MCP_TOOL_NAME_DUPLICATE"
     },
     {
       "code": "MCP_TOOL_NAME_INVALID",
@@ -4060,9 +4064,13 @@
         {
           "owner": "public",
           "source": "sdk/src/node/tool-declarations.ts"
+        },
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
-      "topic": "/errors/client/#MCP_TOOL_NAME_INVALID"
+      "topic": "/errors/gateway/#MCP_TOOL_NAME_INVALID"
     },
     {
       "code": "MCP_TOOL_NOT_STATIC",
@@ -4084,16 +4092,20 @@
         {
           "owner": "public",
           "source": "sdk/src/node/tool-declarations.ts"
+        },
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
-      "topic": "/errors/client/#MCP_TOOL_PATH_UNSUPPORTED"
+      "topic": "/errors/gateway/#MCP_TOOL_PATH_UNSUPPORTED"
     },
     {
       "code": "MCP_TOOL_ROUTE_AMBIGUOUS",
       "owners": [
         {
-          "owner": "compatibility",
-          "source": "reference/error-codes"
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
       "topic": "/errors/gateway/#MCP_TOOL_ROUTE_AMBIGUOUS"
@@ -4104,16 +4116,20 @@
         {
           "owner": "public",
           "source": "sdk/src/node/tool-declarations.ts"
+        },
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
-      "topic": "/errors/client/#MCP_TOOL_ROUTE_ELSEWHERE"
+      "topic": "/errors/gateway/#MCP_TOOL_ROUTE_ELSEWHERE"
     },
     {
       "code": "MCP_TOOL_ROUTE_MISSING",
       "owners": [
         {
-          "owner": "compatibility",
-          "source": "reference/error-codes"
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
       "topic": "/errors/gateway/#MCP_TOOL_ROUTE_MISSING"
@@ -4124,9 +4140,13 @@
         {
           "owner": "public",
           "source": "sdk/src/function-tools.ts"
+        },
+        {
+          "owner": "gateway",
+          "source": "packages/gateway/src/utils/error-envelope.ts"
         }
       ],
-      "topic": "/errors/client/#MCP_TOOL_SCHEMA_INVALID"
+      "topic": "/errors/gateway/#MCP_TOOL_SCHEMA_INVALID"
     },
     {
       "code": "MEMBER_NOT_FOUND",

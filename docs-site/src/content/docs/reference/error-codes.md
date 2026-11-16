@@ -1396,11 +1396,11 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 
 <a id="mcp_tool_name_duplicate"></a>
 <a id="MCP_TOOL_NAME_DUPLICATE"></a>
-[`MCP_TOOL_NAME_DUPLICATE`](/errors/client/#MCP_TOOL_NAME_DUPLICATE)
+[`MCP_TOOL_NAME_DUPLICATE`](/errors/gateway/#MCP_TOOL_NAME_DUPLICATE)
 
 <a id="mcp_tool_name_invalid"></a>
 <a id="MCP_TOOL_NAME_INVALID"></a>
-[`MCP_TOOL_NAME_INVALID`](/errors/client/#MCP_TOOL_NAME_INVALID)
+[`MCP_TOOL_NAME_INVALID`](/errors/gateway/#MCP_TOOL_NAME_INVALID)
 
 <a id="mcp_tool_not_static"></a>
 <a id="MCP_TOOL_NOT_STATIC"></a>
@@ -1408,7 +1408,7 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 
 <a id="mcp_tool_path_unsupported"></a>
 <a id="MCP_TOOL_PATH_UNSUPPORTED"></a>
-[`MCP_TOOL_PATH_UNSUPPORTED`](/errors/client/#MCP_TOOL_PATH_UNSUPPORTED)
+[`MCP_TOOL_PATH_UNSUPPORTED`](/errors/gateway/#MCP_TOOL_PATH_UNSUPPORTED)
 
 <a id="mcp_tool_route_ambiguous"></a>
 <a id="MCP_TOOL_ROUTE_AMBIGUOUS"></a>
@@ -1416,7 +1416,7 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 
 <a id="mcp_tool_route_elsewhere"></a>
 <a id="MCP_TOOL_ROUTE_ELSEWHERE"></a>
-[`MCP_TOOL_ROUTE_ELSEWHERE`](/errors/client/#MCP_TOOL_ROUTE_ELSEWHERE)
+[`MCP_TOOL_ROUTE_ELSEWHERE`](/errors/gateway/#MCP_TOOL_ROUTE_ELSEWHERE)
 
 <a id="mcp_tool_route_missing"></a>
 <a id="MCP_TOOL_ROUTE_MISSING"></a>
@@ -1424,7 +1424,7 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 
 <a id="mcp_tool_schema_invalid"></a>
 <a id="MCP_TOOL_SCHEMA_INVALID"></a>
-[`MCP_TOOL_SCHEMA_INVALID`](/errors/client/#MCP_TOOL_SCHEMA_INVALID)
+[`MCP_TOOL_SCHEMA_INVALID`](/errors/gateway/#MCP_TOOL_SCHEMA_INVALID)
 
 <a id="member_not_found"></a>
 <a id="MEMBER_NOT_FOUND"></a>

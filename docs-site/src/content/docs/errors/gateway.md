@@ -1407,22 +1407,67 @@ Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway rejected or could not complete the request. Its response carries the operation-specific explanation and repair fields. Follow those next actions using the intended principal and project. Inspect mutation outcome before retrying; payment challenges and permission denials require different repairs.
 
+<h2 id="MCP_TOOL_NAME_DUPLICATE">MCP_TOOL_NAME_DUPLICATE</h2>
+
+Owner: `public:astro/src/endpoint-tools.ts`, `public:sdk/src/namespaces/deploy.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+Two tools share a name. Tool names are unique in a release. Raised before any request when two functions of one spec, two keys of one `tools`, or two endpoint files of one Astro build declare the same name (`details.functions` or the message names both), and by the gateway at the plan (HTTP 422) when the name collides with a function the deploy does not touch. A tool with no `name` takes its function's name.
+
+**Suggested fix:** rename one of the two tools.
+
+
+<h2 id="MCP_TOOL_NAME_INVALID">MCP_TOOL_NAME_INVALID</h2>
+
+Owner: `public:sdk/src/node/tool-declarations.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+A tool's name is not a valid MCP tool name (1 to 128 of `A-Z`, `a-z`, `0-9`, `_`, `-`, `.`). Under `tools` the name is the key; a single `tool` states it with `name`. A function file's `tool` with no `name` is named after its function, so the function name has to be valid too; an Astro endpoint's `tool` has no default and must state `name`.
+
+**Suggested fix:** rename the key, or add `name: "…"` to the declaration.
+
+
+<h2 id="MCP_TOOL_PATH_UNSUPPORTED">MCP_TOOL_PATH_UNSUPPORTED</h2>
+
+Owner: `public:sdk/src/function-tools.ts`, `public:sdk/src/node/tool-declarations.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+A tool's path has a segment that cannot be filled from the tool's arguments: a wildcard (`*`), a rest segment (`{...rest}`, or `[...rest]` in an Astro route), or a parameter that is only part of a segment (`post-{id}`, `post-[id]`). A tool names one request, and each `{param}` stands for one whole path segment.
+
+**Suggested fix:** declare the tool on a path whose parameters are whole segments, such as `/api/notes/{note_id}` (`src/pages/api/notes/[note_id].ts`).
+
+
 <h2 id="MCP_TOOL_ROUTE_AMBIGUOUS">MCP_TOOL_ROUTE_AMBIGUOUS</h2>
 
-Owner: `compatibility:reference/error-codes`.
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway refused the plan (HTTP 422): a tool names no `path` and its function is the target of several exact `POST` routes, so the tool's request is ambiguous.
 
 **Suggested fix:** state `path` (and `method`) on the declaration.
 
 
+<h2 id="MCP_TOOL_ROUTE_ELSEWHERE">MCP_TOOL_ROUTE_ELSEWHERE</h2>
+
+Owner: `public:sdk/src/node/tool-declarations.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+The request a tool names would not reach its function. At `astro build`: the endpoint is prerendered, so Astro writes its response to a static file and that file answers the path. At the plan (HTTP 422): a static file, a repo route target or another function answers the tool's method and path.
+
+**Suggested fix:** serve the endpoint on request (`export const prerender = false`), or declare the tool on the function or endpoint that does answer the request.
+
+
 <h2 id="MCP_TOOL_ROUTE_MISSING">MCP_TOOL_ROUTE_MISSING</h2>
 
-Owner: `compatibility:reference/error-codes`.
+Owner: `gateway:packages/gateway/src/utils/error-envelope.ts`.
 
 The gateway refused the plan (HTTP 422): a tool names no `path` and its function has no exact route that accepts `POST`, or no route of the release sends the tool's method and path to its function. `resource` is `functions.<function>.tools.<tool>`.
 
 **Suggested fix:** give the function one exact `POST` route, or state `method` and `path` for a request one of its routes answers. `run402 deploy releases active` lists the live routes.
+
+
+<h2 id="MCP_TOOL_SCHEMA_INVALID">MCP_TOOL_SCHEMA_INVALID</h2>
+
+Owner: `public:sdk/src/function-tools.ts`, `gateway:packages/gateway/src/utils/error-envelope.ts`.
+
+A tool declaration has the wrong shape: `description` is missing, empty or over 1024 characters; `input` is missing or its root `type` is not `"object"`; a file exports both `tool` and `tools`; an entry under `tools` carries `name` (the key is the name); a field, an annotation or a `method` is not one the declaration knows (`method` is `GET`, `POST`, `PATCH`, `PUT` or `DELETE`); a `{param}` of the path is not a required `string` or `integer` property of `input`. In an Astro endpoint file also: `path` is written (it is the endpoint's own route), the stated `method` is one the file does not export, or the file exports several handlers (or `ALL`) and the tool states no `method`. Raised before any request by `run402 deploy`, `run402 up` and `astro build` with the file, line and `details.field_path`, and by the gateway at the plan (HTTP 422) with `resource` `functions.<function>.tools.<tool>`.
+
+**Suggested fix:** fix the field `details.field_path` names, then build or deploy again.
 
 
 <h2 id="MEMBER_NOT_FOUND">MEMBER_NOT_FOUND</h2>

@@ -2991,7 +2991,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "d252f4e35454dd76c37118b5e4c935427468fc62843f732be4e54a193dd8c6c0",
+      "sha256": "d687c358e35ed8caeb657e4ca3a140fc4c3236d934810e0883209f5a43cf6fdc",
       "outputs": [],
       "url": "https://docs.run402.com/errors/client/",
       "checks": [
@@ -3033,7 +3033,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "95fa234c52e8801d9d4759f6f307587c34961d2ab02294515c74298c41606bfb",
+      "sha256": "38e934ecb8e8e88fc328e5689da37859b195275c8ca7168444a42c35436bf0f2",
       "outputs": [],
       "url": "https://docs.run402.com/errors/gateway/",
       "checks": [
@@ -3054,7 +3054,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "f5c3b375fd92a46c2ba6c33141b26fecdd59485744dffc0839d33dca6de1318c",
+      "sha256": "9cbd31496746a5b63ebe5cf909de44ea7ed480c0704f96da211dd081e7c2a64d",
       "outputs": [],
       "url": "https://docs.run402.com/errors/",
       "checks": [
@@ -3425,7 +3425,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "2d4034be58aa08b4b690d24d9c8fd49a31033c52ef14a907f47f3ca1b66f0f4b",
+      "sha256": "10bc0817592e3d1b251c37e5c4425e5c8d564699f2701f6a3c5cc3d5487dad11",
       "outputs": [],
       "url": "https://docs.run402.com/reference/error-codes/",
       "checks": [
@@ -4104,7 +4104,7 @@
       "purpose": "example",
       "interface": "cli",
       "exception": "Application code, manifests and test probes remain native; capability gaps are explicit.",
-      "sha256": "78483576939f057ae611f09fc830ce3f2e6557f17710614ffc307feec7ff7bab",
+      "sha256": "c26e9657b036b5c57d7859bd34553e70529f175f005358e7f0a8bf5ec6bafc92",
       "outputs": [],
       "url": null,
       "checks": [
