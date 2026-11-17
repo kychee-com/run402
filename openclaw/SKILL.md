@@ -445,7 +445,7 @@ V1 intentionally keeps the shape narrow: `push` and `workflow_dispatch` only, no
 
 ## Authorization — the expose manifest
 
-Tables you create are dark by default. Until your manifest declares a table with `expose: true`, it's invisible to anon and authenticated callers. This eliminates the "agent forgot RLS, data leaked" footgun. The manifest is the single source of truth for what's reachable via `/rest/v1/*`. A valid anon key against an existing but undeclared table gets a structured `403 TABLE_NOT_EXPOSED` (never a bare Postgres `42501`) whose `next_actions` say exactly that: `expose_table` (declare it in `database.expose.tables` and `run402 up -y`), `edit_request` (the expose endpoint), or `use_function` (keep it dark and read it from a function with `adminDb()`). It is not an RLS problem.
+Tables you create are dark by default. Until your manifest declares a table with `expose: true`, it's invisible to anon and authenticated callers. This eliminates the "agent forgot RLS, data leaked" footgun. The manifest is the single source of truth for what's reachable via `/rest/v1/*`. A request against an existing but undeclared table, with the anon key or a user's token, gets a structured `403 TABLE_NOT_EXPOSED` naming the caller's role (never a bare Postgres `42501`) whose `next_actions` say exactly that: `expose_table` (declare it in `database.expose.tables` and `run402 up -y`), `edit_request` (the expose endpoint), or `use_function` (keep it dark and read it from a function with `adminDb()`). It is not an RLS problem.
 
 JSON Schema: <https://run402.com/schemas/manifest.v1.json>. Set `$schema` on your manifest file and your editor gets autocomplete for free.
 

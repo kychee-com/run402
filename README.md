@@ -127,7 +127,7 @@ Use a manifest asset slice when these files must activate with a release. See th
 
 ### Dark-by-default tables + the expose manifest
 
-Tables you create are unreachable via `/rest/v1/*` until you declare them in a manifest. That closes the "agent created a table, forgot to set RLS, data leaked" footgun. A valid anon key against an existing but undeclared table gets a structured `403 TABLE_NOT_EXPOSED` (never a bare Postgres `42501`) whose `next_actions` say exactly that: `expose_table` (declare it and redeploy), `edit_request` (the expose endpoint), or `use_function` (keep it dark and read it from a function with `adminDb()`); it is not an RLS problem. The manifest is convergent: applying it twice is a no-op; items removed between applies have their policies, grants, triggers, and views dropped.
+Tables you create are unreachable via `/rest/v1/*`, by anonymous callers, signed-in users and app admins alike, until you declare them in a manifest. That closes the "agent created a table, forgot to set RLS, data leaked" footgun. A request against an existing but undeclared table, with the anon key or a user's token, gets a structured `403 TABLE_NOT_EXPOSED` naming the caller's role (never a bare Postgres `42501`) whose `next_actions` say exactly that: `expose_table` (declare it and redeploy), `edit_request` (the expose endpoint), or `use_function` (keep it dark and read it from a function with `adminDb()`); it is not an RLS problem. The manifest is convergent: applying it twice is a no-op; items removed between applies have their policies, grants, triggers, and views dropped.
 
 ```bash
 cat > manifest.json <<'EOF'
