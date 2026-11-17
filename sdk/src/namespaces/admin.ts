@@ -14,7 +14,6 @@ import { Transfers } from "./transfers.js";
 export interface AgentContact {
   name: string;
   email?: string;
-  webhook?: string;
 }
 
 export type AgentEmailVerificationStatus = "none" | "pending" | "verified";
@@ -30,7 +29,6 @@ export interface AgentContactResult {
   wallet: string;
   name: string;
   email: string | null;
-  webhook: string | null;
   email_verification_status: AgentEmailVerificationStatus;
   passkey_binding_status: AgentPasskeyBindingStatus;
   assurance_level: AgentAssuranceLevel;

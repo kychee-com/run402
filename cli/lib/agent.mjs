@@ -1,12 +1,12 @@
 import { walletAuthHeaders } from "./config.mjs";
 import { getSdk } from "./sdk.mjs";
 import { reportSdkError, fail } from "./sdk-errors.mjs";
-import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, validateWebhookUrl, failUnknownSubcommand } from "./argparse.mjs";
+import { assertKnownFlags, flagValue, normalizeArgv, positionalArgs, failUnknownSubcommand } from "./argparse.mjs";
 
 const HELP = `run402 agent — Manage agent identity
 
 Usage:
-  run402 agent contact --name <name> [--email <email>] [--webhook <url>]
+  run402 agent contact --name <name> [--email <email>]
   run402 agent status
   run402 agent verify-email
   run402 agent passkey enroll
@@ -14,13 +14,14 @@ Usage:
 Notes:
   - Free with SIWX auth
   - Registers contact info so Run402 can reach your agent
-  - Only name is required; email and webhook are optional
+  - Only name is required; email is optional
+  - The webhook is its own channel: run402 contacts webhook set <https_url>
   - New or changed emails start reply verification
   - Passkey enrollment requires email_verified
 
 Examples:
   run402 agent contact --name my-agent
-  run402 agent contact --name my-agent --email ops@example.com --webhook https://example.com/hook
+  run402 agent contact --name my-agent --email ops@example.com
   run402 agent status
   run402 agent verify-email
   run402 agent passkey enroll
@@ -30,13 +31,11 @@ const SUB_HELP = {
   contact: `run402 agent contact — Register agent contact info
 
 Usage:
-  run402 agent contact --name <name> [--email <email>] [--webhook <url>]
+  run402 agent contact --name <name> [--email <email>]
 
 Options:
   --name <name>       Required: agent name (e.g. "my-agent")
   --email <email>     Optional: contact email address
-  --webhook <url>     Optional: webhook URL Run402 can call to reach the
-                      agent
 
 Notes:
   - Free with SIWX auth (run 'run402 init' first)
@@ -46,8 +45,7 @@ Notes:
 
 Examples:
   run402 agent contact --name my-agent
-  run402 agent contact --name my-agent --email ops@example.com \\
-    --webhook https://example.com/hook
+  run402 agent contact --name my-agent --email ops@example.com
 `,
   status: `run402 agent status — Get agent contact assurance status
 
@@ -79,26 +77,21 @@ whose verified email their principal holds.
 
 async function contact(args) {
   const parsedArgs = normalizeArgv(args);
-  const valueFlags = ["--name", "--email", "--webhook"];
+  const valueFlags = ["--name", "--email"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
   const extra = positionalArgs(parsedArgs, valueFlags);
   if (extra.length > 0) {
     fail({
       code: "BAD_USAGE",
       message: `Unexpected argument for agent contact: ${extra[0]}`,
-      hint: "Use `run402 agent contact --name <name> [--email <email>] [--webhook <url>]`.",
+      hint: "Use `run402 agent contact --name <name> [--email <email>]`.",
     });
   }
   const name = flagValue(parsedArgs, "--name");
   const email = flagValue(parsedArgs, "--email");
-  const webhook = flagValue(parsedArgs, "--webhook");
   if (!name) {
     fail({ code: "BAD_USAGE", message: "Missing --name <name>" });
   }
-  // validate webhook scheme locally BEFORE the wallet check so
-  // bad URLs fail fast even without a wallet configured. No-op when
-  // --webhook is omitted (it's optional).
-  validateWebhookUrl(webhook, "--webhook");
   // Preserve the aggressive early exit when no local wallet is configured.
   walletAuthHeaders("/agent/v1/contact");
 
@@ -106,7 +99,6 @@ async function contact(args) {
     const data = await getSdk().admin.setAgentContact({
       name,
       email: email ?? undefined,
-      webhook: webhook ?? undefined,
     });
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {

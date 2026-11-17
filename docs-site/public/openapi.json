@@ -11395,10 +11395,6 @@
                   "email": {
                     "type": "string",
                     "description": "Contact email (optional)"
-                  },
-                  "webhook": {
-                    "type": "string",
-                    "description": "Webhook URL, must be https (optional)"
                   }
                 }
               }

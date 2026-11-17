@@ -7010,7 +7010,7 @@ describe("CLI webhook URL scheme validation (GH-192)", () => {
 
   // ── agent contact ────────────────────────────────────────────────────────
 
-  it("agent contact --webhook javascript:alert(1) is rejected locally", async () => {
+  it("agent contact --webhook is an unknown flag (the webhook is run402 contacts webhook set)", async () => {
     const { run } = await import("./cli/lib/agent.mjs");
     const calls = [];
     const prevFetch = globalThis.fetch;
@@ -7018,16 +7018,13 @@ describe("CLI webhook URL scheme validation (GH-192)", () => {
     let threw = null;
     captureStart();
     try {
-      await run("contact", ["--name", "test", "--webhook", "javascript:alert(1)"]);
+      await run("contact", ["--name", "test", "--webhook", "https://valid.com/hook"]);
     } catch (e) { threw = e; } finally {
       captureStop();
       globalThis.fetch = prevFetch;
     }
     assert.equal(threw?.message, "process.exit(1)");
     assert.equal(calls.length, 0, "must not make a network call");
-    const parsed = parseStderrJson();
-    assert.equal(parsed.code, "BAD_WEBHOOK_URL");
-    assert.equal(parsed.field, "--webhook");
   });
 
   it("agent contact --name test (no webhook) does not trigger URL validation", async () => {
@@ -7055,25 +7052,6 @@ describe("CLI webhook URL scheme validation (GH-192)", () => {
     }
   });
 
-  it("agent contact --webhook https://valid.com/hook passes URL validation", async () => {
-    const { run } = await import("./cli/lib/agent.mjs");
-    let threw = null;
-    captureStart();
-    try {
-      await run("contact", ["--name", "test", "--webhook", "https://valid.com/hook"]);
-    } catch (e) { threw = e; } finally {
-      captureStop();
-    }
-    const stderr = capturedStderr();
-    if (stderr.trim()) {
-      const line = stderr.split("\n").map(s => s.trim()).find(s => s.startsWith("{"));
-      if (line) {
-        const parsed = JSON.parse(line);
-        assert.notEqual(parsed.code, "BAD_WEBHOOK_URL",
-          `valid https webhook must not trigger BAD_WEBHOOK_URL, got: ${stderr}`);
-      }
-    }
-  });
 });
 
 // ── ai translate / moderate / usage default to active project (GH-187) ──────

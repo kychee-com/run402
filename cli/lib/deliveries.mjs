@@ -45,7 +45,7 @@ async function list(args) {
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
   const extra = positionalArgs(parsedArgs, valueFlags);
   if (extra.length > 0) {
-    fail({ code: "BAD_USAGE", message: `Unexpected argument for notifications list: ${extra[0]}` });
+    fail({ code: "BAD_USAGE", message: `Unexpected argument for deliveries list: ${extra[0]}` });
   }
   walletAuthHeaders("/agent/v1/notifications");
   const opts = {};
