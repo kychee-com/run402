@@ -794,7 +794,6 @@ export class Admin {
   async setAgentContact(contact: AgentContact): Promise<AgentContactResult> {
     const body: Record<string, string> = { name: contact.name };
     if (contact.email) body.email = contact.email;
-    if (contact.webhook) body.webhook = contact.webhook;
 
     return this.client.request<AgentContactResult>("/agent/v1/contact", {
       method: "POST",

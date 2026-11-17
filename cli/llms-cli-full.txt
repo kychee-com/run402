@@ -2040,7 +2040,7 @@ Account-state refusals are 403 with `next_actions`: `STRIPE_ACCOUNT_REQUIRED` (`
 - `run402 feedback send "<text>" [--project <project_id>] [--handle <handle>] [--return-address <how to reach you>]` — `--project` + `message: "promote: yes"` relays a deploy's promotion consent (see "Finish a deploy: hand your human two links" above), and a `promote:` message without `--project` is refused `VALIDATION_FAILED`; `--handle` is the human's X/Twitter handle (≤64 chars), delivered as-is; `--return-address` (an email, a handle, a URL; at most 256 characters) tells the Run402 team how to contact you back, since there is no inbox to read. The output carries `next_actions` with `register_contact` when Run402 holds no verified email for your organization (`run402 agent contact --name <name> --email <email>`).
 
 ### agent
-- `run402 agent contact --name <name> [--email <email>] [--webhook <url>]`
+- `run402 agent contact --name <name> [--email <email>]`
 - `run402 agent status`
 - `run402 agent verify-email`
 - `run402 agent passkey enroll`
