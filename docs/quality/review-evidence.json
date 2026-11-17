@@ -1051,10 +1051,6 @@
       "sha256": "68e2e24d0bfda426468005da8e6a56d17241d0d093a846ae471ca1ca5dfb2326",
       "review": "reviewed classification and entry routing: native protocol/schema examples intentionally retained; owning parity/claim gates apply"
     },
-    "private:apps/marketing/sorting-humans/index.html": {
-      "sha256": "42daac3b5ac5a3d665898f5c26f1c68ba1d41309886f8653f50bdca8c31f70e6",
-      "review": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained"
-    },
     "private:apps/marketing/updates.txt": {
       "sha256": "e73c9306e5986a923d6352156f1900d5ff0c8a6fb03d3dffb98976fcf0c75670",
       "review": "excluded from rewrite: dated history; current release note/banner reviewed"

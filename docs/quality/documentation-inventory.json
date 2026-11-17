@@ -5583,26 +5583,6 @@
     },
     {
       "repository": "private",
-      "path": "apps/marketing/sorting-humans/index.html",
-      "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
-      "sourceState": "working-tree snapshot; revision is baseline",
-      "sha256": "42daac3b5ac5a3d665898f5c26f1c68ba1d41309886f8653f50bdca8c31f70e6",
-      "owner": "hosted-docs",
-      "purpose": "reference",
-      "interface": "cli",
-      "exception": "Native browser application code retained; general operations prefer CLI.",
-      "checks": [
-        "hosted-docs",
-        "gitvault-page-truth"
-      ],
-      "evidence": {
-        "editorial": "reviewed hosted entry/copy: CLI default, SDK scripting, MCP host routing, staged release and authority claims; native UI retained",
-        "local": "See coordinated implementation evidence for named check results.",
-        "publication": "hosted verified: 2026-09-17; site 610b2e05d"
-      }
-    },
-    {
-      "repository": "private",
       "path": "apps/marketing/updates.txt",
       "revision": "610b2e05d6f6f778c8ae055fe4a58bda37e7854d",
       "sourceState": "working-tree snapshot; revision is baseline",
