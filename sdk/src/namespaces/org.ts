@@ -163,6 +163,29 @@ export class OrgInvites {
   }
 }
 
+/** The organization notices an owner or admin may rehearse. */
+export type RehearsableOrgEvent =
+  | "organization_past_due"
+  | "organization_frozen"
+  | "organization_downgrade_warning"
+  | "organization_downgraded_to_prototype";
+
+/** One recipient of a rehearsed organization notice. */
+export interface OrgNotificationRecipient {
+  email: string;
+  /** A verified wallet contact of the organization, or a member's own verified email. */
+  reached_through: "wallet_contact" | "member";
+  /** `skipped_disabled`: that person turned this kind of notice off. */
+  delivery_status: "delivered" | "skipped_disabled" | "failed";
+}
+
+export interface OrgTestNotificationResult {
+  event_type: RehearsableOrgEvent;
+  source_event_id: string;
+  /** Everyone the real notice would reach; empty when nobody can be told. */
+  recipients: OrgNotificationRecipient[];
+}
+
 /**
  * A resource-scoped org sub-client returned by `r.org(id)`. The org id is bound
  * at construction; instance operations take no repeated id argument. Mirrors the
@@ -181,6 +204,20 @@ export class ScopedOrg {
     this.orgId = orgId;
     this.members = new OrgMembers(client, orgId);
     this.invites = new OrgInvites(client, orgId);
+  }
+
+  /**
+   * Rehearse an organization notice (`POST /orgs/v1/:org_id/notifications/test`):
+   * the real event, marked `[TEST]`, sent through the real recipients and their
+   * own preferences, with no change to the organization. Owner or admin only;
+   * one rehearsal per organization per minute. Answers who received it and who
+   * did not.
+   */
+  async testNotification(opts: { eventType: RehearsableOrgEvent }): Promise<OrgTestNotificationResult> {
+    return this.client.request<OrgTestNotificationResult>(
+      `/orgs/v1/${encodeURIComponent(this.orgId)}/notifications/test`,
+      { method: "POST", body: { event_type: opts.eventType }, context: "rehearsing an organization notice" },
+    );
   }
 
   /**

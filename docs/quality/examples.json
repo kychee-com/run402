@@ -665,7 +665,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/ops.md",
-    "line": 175,
+    "line": 176,
     "language": "bash",
     "kind": "commands",
     "sha256": "bf0c36e96f9f417430147dbd21f41f80c3eeadb48a23f15ce89eccb01f36d0b0",

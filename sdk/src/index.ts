@@ -680,7 +680,7 @@ export type * from "./namespaces/write-approval.js";
 export { Me } from "./namespaces/me.js";
 export type * from "./namespaces/me.js";
 export { Orgs, ScopedOrg, OrgMembers, OrgInvites, OrgAdopt, OrgLightningReceiver } from "./namespaces/org.js";
-export type { AdoptChallenge, AdoptChallengeInput, AdoptSubmitInput, AdoptResult, SelectableOrg, LightningReceiver, SetLightningReceiverInput, LightningReceiverRemoved } from "./namespaces/org.js";
+export type { AdoptChallenge, AdoptChallengeInput, AdoptSubmitInput, AdoptResult, SelectableOrg, LightningReceiver, SetLightningReceiverInput, LightningReceiverRemoved, RehearsableOrgEvent, OrgNotificationRecipient, OrgTestNotificationResult } from "./namespaces/org.js";
 export type * from "./namespaces/org.types.js";
 export { Grants } from "./namespaces/grants.js";
 export type * from "./namespaces/grants.types.js";

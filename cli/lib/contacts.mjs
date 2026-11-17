@@ -52,6 +52,7 @@ Usage:
   run402 contacts webhook rm
   run402 contacts webhook rotate-secret
   run402 contacts test [--source app|platform] [--type <event_type>] [--severity <level>]
+  run402 contacts test --org <org_id> --event <organization_past_due|organization_frozen|organization_downgrade_warning|organization_downgraded_to_prototype>
 
 Two kinds, one question:
   escalation   an email in the paging LADDER — \`add\`, with a --level that
@@ -324,8 +325,34 @@ async function runChannels(args) {
   });
 }
 
+const REHEARSABLE_EVENTS = [
+  "organization_past_due",
+  "organization_frozen",
+  "organization_downgrade_warning",
+  "organization_downgraded_to_prototype",
+];
+
+/** `contacts test --org`: rehearse an organization notice and show who it reaches. */
+async function rehearse(parsedArgs) {
+  const orgId = flagValue(parsedArgs, "--org");
+  const event = flagValue(parsedArgs, "--event");
+  if (!event) fail({ code: "BAD_USAGE", message: `--event is required with --org: one of ${REHEARSABLE_EVENTS.join(", ")}` });
+  assertAllowedValue(event, REHEARSABLE_EVENTS, "--event");
+  try {
+    const data = await getSdk().org(orgId).testNotification({ eventType: event });
+    console.log(JSON.stringify(data, null, 2));
+  } catch (err) {
+    reportSdkError(err);
+  }
+}
+
 async function test(args) {
   const parsedArgs = normalizeArgv(args);
+  if (flagValue(parsedArgs, "--org") !== null || flagValue(parsedArgs, "--event") !== null) {
+    assertKnownFlags(parsedArgs, ["--org", "--event", "--help", "-h"], ["--org", "--event"]);
+    if (flagValue(parsedArgs, "--org") === null) fail({ code: "BAD_USAGE", message: "--event needs --org <org_id>" });
+    return rehearse(parsedArgs);
+  }
   const valueFlags = ["--source", "--type", "--severity"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
   const extra = positionalArgs(parsedArgs, valueFlags);

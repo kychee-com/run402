@@ -477,3 +477,22 @@ describe("r.org(id) surface drift guard", () => {
     assert.equal(scoped.orgId, "org_drift");
   });
 });
+
+describe("r.org(id).testNotification", () => {
+  it("POSTs /orgs/v1/:org_id/notifications/test with { event_type } and returns the recipient list", async () => {
+    const { fetch, calls } = mockFetch((call) => {
+      assert.equal(call.method, "POST");
+      assert.equal(call.url, "https://api.example.test/orgs/v1/org_1/notifications/test");
+      assert.deepEqual(parseBody(call.body), { event_type: "organization_past_due" });
+      return jsonResponse({
+        event_type: "organization_past_due",
+        source_event_id: "evt_1",
+        recipients: [{ email: "a@example.test", reached_through: "member", delivery_status: "delivered" }],
+      });
+    });
+    const out = await makeSdk(fetch).org("org_1").testNotification({ eventType: "organization_past_due" });
+    assert.equal(out.source_event_id, "evt_1");
+    assert.equal(out.recipients[0]!.reached_through, "member");
+    assert.equal(calls.length, 1);
+  });
+});

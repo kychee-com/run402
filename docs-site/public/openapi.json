@@ -12937,6 +12937,142 @@
         }
       }
     },
+    "/orgs/v1/{org_id}/notifications/test": {
+      "post": {
+        "tags": [
+          "Org"
+        ],
+        "summary": "Rehearse an organization lifecycle notice",
+        "operationId": "testOrgNotification",
+        "description": "Sends one organization lifecycle notice, marked as a test, through the same audience resolution, preference gates and channels as the real event: wallet contacts, owner and admin members, and billing members for organization_past_due and organization_frozen. The organization's lifecycle state, lease and tier are not changed. The email subject begins [TEST] and Telegram messages carry the same marker. The caller must be an active owner or admin member (SIWX wallet or sign-in session); anyone else gets 403 FORBIDDEN with next_actions before any lookup. One call per organization per minute (429 with Retry-After). An organization with no recipient answers 200 with recipients: [] and records a missing_verified_recipient audit row.",
+        "security": [
+          {
+            "walletAuth": []
+          },
+          {
+            "controlPlaneSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "event_type"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "event_type": {
+                    "type": "string",
+                    "enum": [
+                      "organization_past_due",
+                      "organization_frozen",
+                      "organization_downgrade_warning",
+                      "organization_downgraded_to_prototype"
+                    ],
+                    "description": "organization_purged is not rehearsable. Any other value is 400 with field event_type."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rehearsed. One entry per resolved recipient.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "event_type": {
+                      "type": "string"
+                    },
+                    "source_event_id": {
+                      "type": "string",
+                      "description": "The audit rows of this rehearsal carry it and is_test=true."
+                    },
+                    "recipients": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "email": {
+                            "type": "string"
+                          },
+                          "reached_through": {
+                            "type": "string",
+                            "enum": [
+                              "wallet_contact",
+                              "member"
+                            ]
+                          },
+                          "delivery_status": {
+                            "type": "string",
+                            "enum": [
+                              "delivered",
+                              "skipped_disabled",
+                              "failed"
+                            ],
+                            "description": "skipped_disabled: the recipient turned this class off in their notification preferences."
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "event_type missing or not rehearsable; org_id not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "FORBIDDEN: the caller is not an active owner or admin member. Carries next_actions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "One rehearsal per organization per minute. Retry-After says when.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/agent/v1/notifications/test": {
       "post": {
         "tags": [

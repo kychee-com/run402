@@ -620,6 +620,9 @@ const SURFACE: Capability[] = [
   // (positional `set k=v...`); the SDK keeps the read and write as separate methods.
   { id: "set_notification_preferences", endpoint: "PATCH /agent/v1/notifications/preferences",     cli: null,                            openclaw: null },
   { id: "test_notification",            endpoint: "POST /agent/v1/notifications/test",             cli: "contacts:test",                 openclaw: "contacts:test" },
+  // `contacts test --org <org_id> --event <type>` rehearses an organization
+  // notice; the same command as the wallet test, so no CLI column of its own.
+  { id: "rehearse_org_notification",    endpoint: "POST /orgs/v1/:org_id/notifications/test",      cli: null,                            openclaw: null },
   // The wallet's webhook channel: one `contacts webhook` command reads it and
   // carries the set / rm / rotate-secret verbs positionally.
   { id: "get_webhook_channel",          endpoint: "GET /agent/v1/notifications/channels/webhook",   cli: "contacts:webhook",              openclaw: "contacts:webhook" },
@@ -1388,6 +1391,7 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   // Org-owned control plane (v1.77+) — r.org.* + r.grants.*
   create_org: "orgs.create",
   get_org: "org.get",
+  rehearse_org_notification: "org.testNotification",
   rename_org: "org.rename",
   set_org_payout_wallet: "org.setPayoutWallet",
   set_org_lightning_receiver: "orgs.lightningReceiver.set",
