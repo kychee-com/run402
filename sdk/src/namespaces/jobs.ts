@@ -1,11 +1,14 @@
 /**
- * `jobs` namespace — platform-managed job runs.
+ * `jobs` namespace — platform-managed jobs.
  * All methods require the project's service key.
  */
 
 import { ApiError } from "../errors.js";
 import { requireProjectCredentials } from "../project-credentials.js";
 import type { Client } from "../kernel.js";
+
+/** The managed-jobs collection is the service root; a job is `/jobs/v1/:job_id`. */
+const JOBS_COLLECTION = "/jobs/v1";
 
 export type ManagedJobType = string;
 
@@ -78,7 +81,7 @@ export interface ManagedJobMetadata {
 }
 
 /**
- * A recorded output file from a completed job run.
+ * A recorded output file from a completed job.
  *
  * Returned as the values of the `artifacts` map on {@link ManagedJobResponse}
  * (and in the terminal-completion webhook). The legacy `run402://storage/...`
@@ -110,7 +113,7 @@ export interface ManagedJobResponse {
   started_at?: string;
   completed_at?: string;
   /**
-   * Recorded outputs for a completed run, keyed by filename. Each value is a
+   * Recorded outputs for a completed job, keyed by filename. Each value is a
    * {@link ManagedJobArtifact} object (the pre-retirement `run402://` ref
    * strings are gone). Absent until the job reaches a terminal state with
    * recorded artifacts.
@@ -153,12 +156,12 @@ export interface ManagedJobPurgeResponse {
 export class Jobs {
   constructor(private readonly client: Client) {}
 
-  /** Submit a platform-managed job run for a run402-configured job type. */
+  /** Submit a platform-managed job for a run402-configured job type. */
   async submit(projectId: string, request: ManagedJobSubmitRequestInput): Promise<ManagedJobResponse> {
     const project = await requireProjectCredentials(this.client, projectId, "submitting job");
 
     const body = managedJobSubmitRequestToWire(request);
-    return this.client.request<ManagedJobResponse>("/jobs/v1/runs", {
+    return this.client.request<ManagedJobResponse>(JOBS_COLLECTION, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${project.service_key}`,
@@ -169,11 +172,11 @@ export class Jobs {
     });
   }
 
-  /** Get a job run by id. */
+  /** Get a job by id. */
   async get(projectId: string, jobId: string): Promise<ManagedJobResponse> {
     const project = await requireProjectCredentials(this.client, projectId, "getting job");
 
-    return this.client.request<ManagedJobResponse>(jobRunPath(jobId), {
+    return this.client.request<ManagedJobResponse>(jobPath(jobId), {
       headers: { Authorization: `Bearer ${project.service_key}` },
       context: "getting job",
     });
@@ -188,12 +191,12 @@ export class Jobs {
    *
    * @throws {ProjectNotFound} if `projectId` is not in the provider.
    * @throws {ApiError} on non-2xx — notably `404` when the job has not
-   *   completed or the filename was not recorded for the run.
+   *   completed or the filename was not recorded for the job.
    */
   async downloadArtifact(projectId: string, jobId: string, filename: string): Promise<Response> {
     const project = await requireProjectCredentials(this.client, projectId, "downloading job artifact");
 
-    const url = `${this.client.apiBase}${jobRunPath(jobId)}/artifacts/${encodeURIComponent(filename)}`;
+    const url = `${this.client.apiBase}${jobPath(jobId)}/artifacts/${encodeURIComponent(filename)}`;
     const res = await this.client.fetch(url, {
       headers: { Authorization: `Bearer ${project.service_key}` },
     });
@@ -222,7 +225,7 @@ export class Jobs {
     if (opts.since !== undefined) query.set("since", String(opts.since));
     const suffix = query.toString() ? `?${query.toString()}` : "";
 
-    return this.client.request<ManagedJobLogsResponse>(`${jobRunPath(jobId)}/logs${suffix}`, {
+    return this.client.request<ManagedJobLogsResponse>(`${jobPath(jobId)}/logs${suffix}`, {
       headers: { Authorization: `Bearer ${project.service_key}` },
       context: "getting job logs",
     });
@@ -232,18 +235,18 @@ export class Jobs {
   async cancel(projectId: string, jobId: string): Promise<ManagedJobResponse> {
     const project = await requireProjectCredentials(this.client, projectId, "cancelling job");
 
-    return this.client.request<ManagedJobResponse>(jobRunPath(jobId), {
+    return this.client.request<ManagedJobResponse>(jobPath(jobId), {
       method: "DELETE",
       headers: { Authorization: `Bearer ${project.service_key}` },
       context: "cancelling job",
     });
   }
 
-  /** Purge all managed job runs for a project. Active runners are terminated when known. */
+  /** Purge all managed jobs for a project. Active runners are terminated when known. */
   async purge(projectId: string): Promise<ManagedJobPurgeResponse> {
     const project = await requireProjectCredentials(this.client, projectId, "purging jobs");
 
-    return this.client.request<ManagedJobPurgeResponse>("/jobs/v1/runs", {
+    return this.client.request<ManagedJobPurgeResponse>(JOBS_COLLECTION, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${project.service_key}` },
       context: "purging jobs",
@@ -251,8 +254,8 @@ export class Jobs {
   }
 }
 
-function jobRunPath(jobId: string): string {
-  return `/jobs/v1/runs/${encodeURIComponent(jobId)}`;
+function jobPath(jobId: string): string {
+  return `${JOBS_COLLECTION}/${encodeURIComponent(jobId)}`;
 }
 
 function managedJobSubmitRequestToWire(

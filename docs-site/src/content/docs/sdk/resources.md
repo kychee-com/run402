@@ -669,7 +669,7 @@ Durable function runs are service-key authed function requests that survive proc
 
 ### `r.jobs`
 
-Platform-managed jobs over `/jobs/v1/*`. This is not arbitrary Docker execution: callers choose a run402-configured `jobType`, provide JSON input, and set a hard cost cap. The SDK loads the project's `service_key`, supplies the required `Idempotency-Key` header internally, and serializes the request to the gateway's snake_case body.
+Platform-managed jobs over `/jobs/v1` (the collection: submit with `POST`, purge with `DELETE`) and `/jobs/v1/:job_id` (read, cancel, `/logs`, `/artifacts/:filename`). This is not arbitrary Docker execution: callers choose a run402-configured `jobType`, provide JSON input, and set a hard cost cap. The SDK loads the project's `service_key`, supplies the required `Idempotency-Key` header internally, and serializes the request to the gateway's snake_case body.
 
 ```
 submit(projectId, {

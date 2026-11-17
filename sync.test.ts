@@ -497,12 +497,12 @@ const SURFACE: Capability[] = [
   { id: "delete_secret",     endpoint: "DELETE /projects/v1/admin/:id/secrets/:key", cli: "secrets:delete", openclaw: "secrets:delete" },
 
   // ── Managed jobs ────────────────────────────────────────────────────────
-  { id: "jobs_submit",       endpoint: "POST /jobs/v1/runs",                 cli: "jobs:submit", openclaw: "jobs:submit" },
-  { id: "jobs_get",          endpoint: "GET /jobs/v1/runs/:job_id",          cli: "jobs:get",    openclaw: "jobs:get" },
-  { id: "jobs_logs",         endpoint: "GET /jobs/v1/runs/:job_id/logs",     cli: "jobs:logs",   openclaw: "jobs:logs" },
-  { id: "jobs_cancel",       endpoint: "DELETE /jobs/v1/runs/:job_id",       cli: "jobs:cancel", openclaw: "jobs:cancel" },
-  { id: "jobs_purge",        endpoint: "DELETE /jobs/v1/runs",               cli: "jobs:purge",  openclaw: "jobs:purge" },
-  { id: "jobs_download_artifact", endpoint: "GET /jobs/v1/runs/:job_id/artifacts/:filename", cli: "jobs:artifacts:get", openclaw: "jobs:artifacts:get" },
+  { id: "jobs_submit",       endpoint: "POST /jobs/v1",                      cli: "jobs:submit", openclaw: "jobs:submit" },
+  { id: "jobs_get",          endpoint: "GET /jobs/v1/:job_id",               cli: "jobs:get",    openclaw: "jobs:get" },
+  { id: "jobs_logs",         endpoint: "GET /jobs/v1/:job_id/logs",          cli: "jobs:logs",   openclaw: "jobs:logs" },
+  { id: "jobs_cancel",       endpoint: "DELETE /jobs/v1/:job_id",            cli: "jobs:cancel", openclaw: "jobs:cancel" },
+  { id: "jobs_purge",        endpoint: "DELETE /jobs/v1",                    cli: "jobs:purge",  openclaw: "jobs:purge" },
+  { id: "jobs_download_artifact", endpoint: "GET /jobs/v1/:job_id/artifacts/:filename", cli: "jobs:artifacts:get", openclaw: "jobs:artifacts:get" },
 
   // ── Sites / Subdomains ───────────────────────────────────────────────────
   { id: "deploy_site",       endpoint: "POST /apply/v1/plans",             cli: "sites:deploy",       openclaw: "sites:deploy" },

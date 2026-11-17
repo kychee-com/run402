@@ -24,10 +24,10 @@ Usage:
 
 Subcommands:
   submit          --file <path>|--stdin   Submit a managed job request
-  get             <job_id>                Get a job run
+  get             <job_id>                Get a job
   logs            <job_id>                Read job logs
   cancel          <job_id>                Cancel a queued or running job
-  purge                                   Purge all job runs for the project
+  purge                                   Purge all jobs for the project
   artifacts get   <job_id> --file <name>  Download a completed job's artifact (legacy: <job_id> <file>)
 
 Examples:
@@ -69,7 +69,7 @@ Example request:
   dedupe on the Run402-Webhook-Id header and re-fetch with 'jobs get'
   before acting.
 `,
-  get: `run402 jobs get — Get a managed job run
+  get: `run402 jobs get — Get a managed job
 
 Usage:
   run402 jobs get <job_id> [--project <project_id>]
@@ -87,7 +87,7 @@ Options:
   --tail <n>        Maximum entries to return (gateway max: 1000)
   --since <iso>     Only include logs at or after this ISO-8601 timestamp
 `,
-  cancel: `run402 jobs cancel — Cancel a managed job run
+  cancel: `run402 jobs cancel — Cancel a managed job
 
 Usage:
   run402 jobs cancel <job_id> [--project <project_id>]
@@ -95,7 +95,7 @@ Usage:
 Options:
   --project <project_id>    Project ID (defaults to the active project)
 `,
-  purge: `run402 jobs purge — Purge all managed job runs for a project
+  purge: `run402 jobs purge — Purge all managed jobs for a project
 
 Usage:
   run402 jobs purge [--project <project_id>]
@@ -103,7 +103,7 @@ Usage:
 Options:
   --project <project_id>    Project ID (defaults to the active project)
 
-Deletes all project-scoped managed-job run records. Queued/running jobs are
+Deletes all of the project's managed-job records. Queued/running jobs are
 included in the purge; known active runner instances are terminated first.
 Prints { deleted_jobs, cancelled_active_jobs, terminated_instances }.
 `,

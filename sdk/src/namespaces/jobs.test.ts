@@ -80,7 +80,7 @@ describe("jobs", () => {
     const result = await sdk(fetch).jobs.submit("prj_k", submitRequest());
 
     assert.deepEqual(result, response);
-    assert.equal(calls[0]!.url, "https://api.test/jobs/v1/runs");
+    assert.equal(calls[0]!.url, "https://api.test/jobs/v1");
     assert.equal(calls[0]!.method, "POST");
     assert.equal(calls[0]!.headers.Authorization, "Bearer s");
     assert.match(calls[0]!.headers["Idempotency-Key"], /^job-/);
@@ -128,7 +128,7 @@ describe("jobs", () => {
     assert.equal("callback_url" in body, false);
   });
 
-  it("get reads a job run by id", async () => {
+  it("get reads a job by id", async () => {
     const { fetch, calls } = mockFetch(() =>
       json({
         job_id: "job_123",
@@ -141,7 +141,7 @@ describe("jobs", () => {
     const result = await sdk(fetch).jobs.get("prj_k", "job_123");
 
     assert.equal(result.status, "running");
-    assert.equal(calls[0]!.url, "https://api.test/jobs/v1/runs/job_123");
+    assert.equal(calls[0]!.url, "https://api.test/jobs/v1/job_123");
     assert.equal(calls[0]!.method, "GET");
     assert.equal(calls[0]!.headers.Authorization, "Bearer s");
   });
@@ -168,11 +168,11 @@ describe("jobs", () => {
     assert.equal(result.logs.length, 1);
     assert.equal(
       calls[0]!.url,
-      "https://api.test/jobs/v1/runs/job_123/logs?tail=10&since=2026-05-18T00%3A00%3A00.000Z",
+      "https://api.test/jobs/v1/job_123/logs?tail=10&since=2026-05-18T00%3A00%3A00.000Z",
     );
   });
 
-  it("cancel DELETEs the job run route", async () => {
+  it("cancel DELETEs the job route", async () => {
     const { fetch, calls } = mockFetch(() =>
       json({
         job_id: "job_123",
@@ -185,7 +185,7 @@ describe("jobs", () => {
     const result = await sdk(fetch).jobs.cancel("prj_k", "job_123");
 
     assert.equal(result.status, "cancelled");
-    assert.equal(calls[0]!.url, "https://api.test/jobs/v1/runs/job_123");
+    assert.equal(calls[0]!.url, "https://api.test/jobs/v1/job_123");
     assert.equal(calls[0]!.method, "DELETE");
   });
 
@@ -200,9 +200,25 @@ describe("jobs", () => {
     const result = await sdk(fetch).jobs.purge("prj_k");
 
     assert.deepEqual(result, response);
-    assert.equal(calls[0]!.url, "https://api.test/jobs/v1/runs");
+    assert.equal(calls[0]!.url, "https://api.test/jobs/v1");
     assert.equal(calls[0]!.method, "DELETE");
     assert.equal(calls[0]!.headers.Authorization, "Bearer s");
+  });
+
+  it("every method addresses the jobs collection at the service root, never /jobs/v1/runs", async () => {
+    const { fetch, calls } = mockFetch(() => json({ job_id: "job_123", logs: [] }));
+    const client = sdk(fetch);
+    await client.jobs.submit("prj_k", { jobType: "example.managed_job.v1", input: {}, maxCostUsdMicros: 1 });
+    await client.jobs.get("prj_k", "job_123");
+    await client.jobs.logs("prj_k", "job_123");
+    await client.jobs.cancel("prj_k", "job_123");
+    await client.jobs.purge("prj_k");
+    await client.jobs.downloadArtifact("prj_k", "job_123", "proof.json");
+    assert.equal(calls.length, 6);
+    for (const call of calls) {
+      assert.match(call.url, /^https:\/\/api\.test\/jobs\/v1(?:\/job_123(?:\/|$)|$)/, call.url);
+      assert.doesNotMatch(call.url, /\/runs\b/, call.url);
+    }
   });
 
   it("downloadArtifact streams raw bytes with the service bearer", async () => {
@@ -221,7 +237,7 @@ describe("jobs", () => {
     assert.equal(await res.text(), '{"ok":true}');
     assert.equal(
       calls[0]!.url,
-      "https://api.test/jobs/v1/runs/job_123/artifacts/proof.json",
+      "https://api.test/jobs/v1/job_123/artifacts/proof.json",
     );
     assert.equal(calls[0]!.method, "GET");
     assert.equal(calls[0]!.headers.Authorization, "Bearer s");
@@ -234,7 +250,7 @@ describe("jobs", () => {
 
     assert.equal(
       calls[0]!.url,
-      "https://api.test/jobs/v1/runs/job_123/artifacts/prove%20output.log",
+      "https://api.test/jobs/v1/job_123/artifacts/prove%20output.log",
     );
   });
 
