@@ -550,6 +550,43 @@ fs.mkdirSync(args[args.length - 1], { recursive: true });
       assert.ok(args.includes(`credential.${url}.useHttpPath=true`));
       assert.ok(!JSON.stringify(args).includes(SERVICE_KEY));
       assert.ok(!out.includes(SERVICE_KEY) && !err.includes(SERVICE_KEY));
+      // A full clone: git is given no depth, and the result names none
+      assert.ok(!args.includes("--depth"), JSON.stringify(args));
+      assert.equal("depth" in printed, false);
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
+  });
+
+  it("clone --depth passes the depth to git and reports it; a bad depth is refused before git runs", async () => {
+    const bin = mkdtempSync(join(tmpdir(), "run402-fake-git-"));
+    const record = join(bin, "args.json");
+    writeFileSync(join(bin, "git"), `#!${process.execPath}
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+if (args[0] === "--version") { console.log("git version 2.45.0"); process.exit(0); }
+fs.writeFileSync(${JSON.stringify(record)}, JSON.stringify(args));
+fs.mkdirSync(args[args.length - 1], { recursive: true });
+`);
+    chmodSync(join(bin, "git"), 0o755);
+    const env = subEnv({ PATH: `${bin}${delimiter}${process.env.PATH}` });
+    try {
+      for (const bad of ["0", "-1", "x", "1.5", "99999999999"]) {
+        const refused = await runCli(["app-repos", "clone", "default", join(bin, `bad-${bad}`), "--depth", bad, "--project", "prj_kiwi"], { env });
+        assert.notEqual(refused.code, 0, `--depth ${bad}`);
+        const envelope = JSON.parse(refused.err);
+        assert.equal(envelope.code, "BAD_USAGE");
+        assert.match(envelope.message, /--depth/);
+        assert.equal(existsSync(record), false, `git ran for --depth ${bad}`);
+      }
+      const dest = join(bin, "content");
+      const { code, out, err } = await runCli(["app-repos", "clone", "default", dest, "--depth", "1", "--project", "prj_kiwi"], { env });
+      assert.equal(code, 0, err);
+      const printed = JSON.parse(out);
+      assert.equal(printed.depth, 1);
+      const args = JSON.parse(readFileSync(record, "utf8"));
+      assert.deepEqual(args.slice(0, 3), ["clone", "--depth", "1"]);
+      assert.deepEqual(args.slice(-2), [`${apiBase}/projects/v1/prj_kiwi/app-repos/default.git`, dest]);
     } finally {
       rmSync(bin, { recursive: true, force: true });
     }

@@ -1026,6 +1026,7 @@ An app repo is a plain git repository the project owns and its app writes. It is
 run402 app-repos log --path people/p-x.json   # who changed it, newest first
 run402 app-repos cat site.json                # one file at the head (--at <commit> for history)
 run402 app-repos clone default ./content      # plain git clone; git push is live on the next request
+run402 app-repos clone default ./now --depth 1   # only the latest commit, not the history; push, pull and git fetch --unshallow work
 run402 app-repos tokens create notes --access write --ttl 600   # one repo, expires by itself; printed once
 run402 app-repos tokens revoke <token_id> --repo notes
 ```

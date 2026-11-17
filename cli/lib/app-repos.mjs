@@ -34,7 +34,7 @@ Usage:
   run402 app-repos log [<name>] [--path <path>] [--cursor <cursor>] [--limit <n>] [--project <project_id>]
   run402 app-repos cat [<name>] <path> [--at <commit>] [--project <project_id>]
   run402 app-repos ls [<name>] [<dir>] [--at <commit>] [--project <project_id>]
-  run402 app-repos clone [<name>] [<dir>] [--project <project_id>]
+  run402 app-repos clone [<name>] [<dir>] [--depth <n>] [--project <project_id>]
   run402 app-repos tokens create <name> --access read|write [--ttl <seconds>] [--project <project_id>]
   run402 app-repos tokens revoke <token_id> --repo <name> [--project <project_id>]
 
@@ -51,6 +51,8 @@ Options:
   --cursor <cursor>       log: next_cursor from the previous page
   --limit <n>             log: 1-100 commits (default 50)
   --at <commit>           cat / ls: read at this commit instead of the head
+  --depth <n>             clone: only the latest <n> commits (1 is the files as
+                          they are now); without it, the whole history
   --access read|write     tokens create: what the token may do (required)
   --ttl <seconds>         tokens create: 60-86400, default 3600
 
@@ -64,7 +66,8 @@ Prints:
           UTF-8, or base64 in place of text for other bytes; a missing file is
           APP_REPO_PATH_NOT_FOUND (exit 1)
   ls      { commit, path, entries: [{ name, path, type: "file" | "dir", size, oid }] }
-  clone   { project_id, repo_name, dir, clone_url, credential_helper }
+  clone   { project_id, repo_name, dir, clone_url, credential_helper }, and
+          depth when --depth was given
   tokens create  { token_id, token, repo_name, access, clone_url, expires_at,
                    expires_in, next_actions }; token is shown only here
   tokens revoke  { revoked, token_id, revoked_at }
@@ -80,7 +83,9 @@ which works for any member of the project's organization with the role for it:
 run402 --wallet <name> app-repos clone keeps that wallet for git pull and git
 push. Nothing is written into the remote URL or .git/config, and the helper is
 kept in the clone so git pull and git push keep working. main is the only branch and only fast-forward pushes land: undo a
-commit with a revert. Each file is at most 4 MiB: put media in assets and
+commit with a revert. A clone with --depth holds the latest commits only and
+works like any other: commit and git push, git pull for what landed since, and
+git fetch --unshallow when you want the history after all. Each file is at most 4 MiB: put media in assets and
 commit a reference to it.
 
 Auth: the project's service_key, your wallet, a sign-in session, or a grant
@@ -94,6 +99,7 @@ Examples:
   run402 app-repos cat site.json
   run402 app-repos ls default people
   run402 app-repos clone default ./content
+  run402 app-repos clone default ./content --depth 1
   run402 app-repos tokens create user-42 --access read --ttl 900
 `;
 
@@ -300,9 +306,25 @@ function shellQuote(value) {
   return /^[A-Za-z0-9_./:@%+=-]+$/.test(value) ? value : `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
 
+/** `--depth <n>`: how many commits back to clone; null when not given. Git's own limit is a 31-bit count. */
+function cloneDepth(raw) {
+  if (raw === undefined || raw === null) return null;
+  const text = String(raw);
+  if (!/^[1-9][0-9]{0,9}$/.test(text) || Number(text) > 2147483646) {
+    fail({
+      code: "BAD_USAGE",
+      message: `app-repos clone: --depth takes a positive whole number, not ${JSON.stringify(text)}`,
+      hint: "--depth 1 clones the files as they are now; leave it out for the whole history.",
+      details: { flag: "--depth", value: text },
+    });
+  }
+  return Number(text);
+}
+
 async function clone(args) {
-  const { a, pos } = parse(args, ["--project", "--repo", "--dir"]);
+  const { a, pos } = parse(args, ["--project", "--repo", "--dir", "--depth"]);
   if (pos.length > 2) tooMany("clone", pos[2]);
+  const depth = cloneDepth(flagValue(a, "--depth"));
   const repoName = repoNameFrom(a, pos[0], "clone");
   const dirFlag = flagValue(a, "--dir");
   if (dirFlag && pos[1] && dirFlag !== pos[1]) {
@@ -353,6 +375,7 @@ async function clone(args) {
   const scope = `credential.${url}`;
   const result = spawnSync("git", [
     "clone",
+    ...(depth === null ? [] : ["--depth", String(depth)]),
     "--config", `${scope}.helper=`,
     "--config", `${scope}.helper=${helper}`,
     "--config", `${scope}.useHttpPath=true`,
@@ -368,6 +391,7 @@ async function clone(args) {
     });
   }
   const out = { project_id: projectId, repo_name: repoName, dir, clone_url: url, credential_helper: "run402 app-repos credential" };
+  if (depth !== null) out.depth = depth;
   if (!byName) {
     out.next_actions = [{
       type: "install_cli",

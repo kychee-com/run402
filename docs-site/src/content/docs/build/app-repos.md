@@ -84,7 +84,18 @@ run402 --wallet my-agent app-repos clone default ./content --project prj_example
 
 The helper keeps `--wallet my-agent` for `git pull` and `git push`. Under the hood git sends the username `siwx` and a SIGN-IN-WITH-X signature that lives five minutes, made afresh for each git command.
 
-A push is live on the next read, with no deploy. `main` is the only branch: a push to any other ref, a ref deletion and a non-fast-forward push are refused (`git push --force` included), because history is never rewritten. Undo a commit with a revert, which is a new commit (`git revert <commit>` then `git push`, or `repo.revert(commit)` in a function). A push needs `project.app_repos.write` (developer, or a grant with `deploy`); a clone needs `project.app_repos.read` (viewer). Shallow and partial clones are not supported.
+A push is live on the next read, with no deploy. `main` is the only branch: a push to any other ref, a ref deletion and a non-fast-forward push are refused (`git push --force` included), because history is never rewritten. Undo a commit with a revert, which is a new commit (`git revert <commit>` then `git push`, or `repo.revert(commit)` in a function). A push needs `project.app_repos.write` (developer, or a grant with `deploy`); a clone needs `project.app_repos.read` (viewer).
+
+**Clone only the latest commit.** A repo that changes often has a long history, and a full clone downloads every version of every file. When you want the files as they are now, to read them and push a change, clone at a depth:
+
+```bash
+run402 app-repos clone default ./content --depth 1 --project prj_example   # prints depth: 1
+cd content && $EDITOR site.json && git commit -am "Update the title" && git push
+git pull                 # every commit that landed since
+git fetch --unshallow    # the whole history, when you want it after all
+```
+
+The clone holds the latest `<n>` commits and their files, and its size and time follow the files as they are now. Everything else works as in a full clone. `git clone --depth <n>` against the same URL does the same without the CLI. Limits by date or ref (`--shallow-since`, `--shallow-exclude`) are refused by git, and a partial-clone `--filter` is ignored by git, which then clones in full.
 
 ## Give one repo to something you do not fully trust
 
