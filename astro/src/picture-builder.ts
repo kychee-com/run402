@@ -5,7 +5,7 @@
  * (snapshot tests don't need to spin up the Astro compiler). The `.astro`
  * component calls `buildPictureHtml()` and inserts the result via `set:html`.
  *
- * Decisions implemented here (specs/run402/astro-image-adapter.md, Design notes):
+ * Decisions implemented here (astro-image-adapter design notes):
  *   - D-astro-image-adapter-4: srcset uses the gateway's actual variant widths from the AssetRef,
  *     not a hard-coded 320/800/1920 — if the gateway ever generates a
  *     different set we render whatever it returned.

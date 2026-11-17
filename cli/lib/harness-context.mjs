@@ -2,8 +2,7 @@
  * Best-effort session + task identity sourced from the AI harness running
  * this CLI invocation (Claude Code, Codex, or Grok) — no network call, every source
  * optional, the chain always terminates. Backs coordination-room presence
- * resumption in rooms-context.mjs (run402-private
- * specs/run402/agent-presence.md, D-agent-presence-1 and -2).
+ * resumption in rooms-context.mjs (decisions D-agent-presence-1 and -2).
  *
  * Session identity is what makes a presence RESUMABLE across a lost local
  * cache (a fresh checkout, a wiped .run402/, a restarted machine): the
