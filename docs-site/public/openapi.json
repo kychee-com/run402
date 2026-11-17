@@ -36910,7 +36910,7 @@
                 "1"
               ]
             },
-            "description": "OPTIONAL, ORTHOGONAL to `since` — declared restore intent (vault-restore-recipe). The literal string `1` is treated as true; anything else, including absence, is false. When true and the newest checkpoint-bearing generation at or below `newest_generation` (or genesis, when the whole chain is within a fixed generation bound and carries no checkpoint) can be located, the response additionally carries `restore_plan`: the heads from that boundary through `newest_generation`, the boundary checkpoint's claim set + manifest, and every checkpoint + WAL pack the span references. Every disqualification — no locatable boundary within the bound, a transition-bearing head anywhere in the span, an unreadable stored object — OMITS `restore_plan` silently, never a refusal, so an older gateway is indistinguishable from a disqualified vault. A response may carry `delta`, `restore_plan`, both, or neither."
+            "description": "OPTIONAL, ORTHOGONAL to `since` — declared restore intent. The literal string `1` is treated as true; anything else, including absence, is false. When true and the newest checkpoint-bearing generation at or below `newest_generation` (or genesis, when the whole chain is within a fixed generation bound and carries no checkpoint) can be located, the response additionally carries `restore_plan`: the heads from that boundary through `newest_generation`, the boundary checkpoint's claim set + manifest, and every checkpoint + WAL pack the span references. Every disqualification — no locatable boundary within the bound, a transition-bearing head anywhere in the span, an unreadable stored object — OMITS `restore_plan` silently, never a refusal, so an older gateway is indistinguishable from a disqualified vault. A response may carry `delta`, `restore_plan`, both, or neither."
           }
         ],
         "responses": {
@@ -37063,7 +37063,7 @@
                     },
                     "restore_plan": {
                       "type": "object",
-                      "description": "vault-restore-recipe. Present ONLY when `restore=1` AND a checkpoint boundary qualified — omitted (never null) on every disqualification, so an older gateway is indistinguishable from a disqualified vault. Nothing here is server-verified or re-serialized: verify it exactly as you would the unbatched heads/head-reads/object-reads walk (backward chain-link from newest, the claim set's writer signature and its cross-field equality with the manifest, each pack's receipt hash before opening it, apply in chain order) and fall back to the backward walk on any mismatch — already-verified plan heads are cache hits there.",
+                      "description": "Present ONLY when `restore=1` AND a checkpoint boundary qualified — omitted (never null) on every disqualification, so an older gateway is indistinguishable from a disqualified vault. Nothing here is server-verified or re-serialized: verify it exactly as you would the unbatched heads/head-reads/object-reads walk (backward chain-link from newest, the claim set's writer signature and its cross-field equality with the manifest, each pack's receipt hash before opening it, apply in chain order) and fall back to the backward walk on any mismatch — already-verified plan heads are cache hits there.",
                       "properties": {
                         "boundary_generation": {
                           "type": "string",

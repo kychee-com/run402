@@ -293,9 +293,9 @@ describe("vault round-trip budgets (client-surface spec's counted contract)", ()
   });
 });
 
-// ─── vault-restore-recipe: the clone/wholesale-restore row (task 2.3) ─────
+// ─── the clone/wholesale-restore row (D-vault-client-surface-20/21) ─────
 
-describe("vault-restore-recipe: the clone row (client-surface spec's counted contract)", () => {
+describe("restore plan: the clone row (client-surface spec's counted contract)", () => {
   /**
    * Build a genesis-fallback restore plan straight from the fixture's own
    * (uncounted) storage — heads `1..newest` plus every WAL pack they

@@ -1108,7 +1108,7 @@ export interface VaultTransport extends VaultCreationTransport {
    * other stored byte: consumers hash-check before use, and a failed check
    * is a plain miss that the ordinary reads absorb.
    *
-   * `restore` (vault-restore-recipe D-vault-19), ORTHOGONAL to `since` —
+   * `restore` (D-vault-19), ORTHOGONAL to `since` —
    * declares restore intent. A gateway that recognizes it AND can locate a
    * checkpoint boundary within its own bound MAY answer with `restore_plan`
    * (the heads from that boundary to newest, the boundary checkpoint's
@@ -1438,12 +1438,12 @@ export interface VaultState {
   carriers: { ref_state: Uint8Array | null; retention_roots: Uint8Array | null } | null;
   /** Present only when the gateway answered a `since` request with a qualifying span (vault-delta-fetch); absent otherwise, including on every older gateway. */
   delta?: VaultStateDelta | null;
-  /** Present only when the caller declared `restore: true` AND the gateway located a qualifying checkpoint boundary (vault-restore-recipe); absent otherwise, including on every older gateway. */
+  /** Present only when the caller declared `restore: true` AND the gateway located a qualifying checkpoint boundary (D-vault-18); absent otherwise, including on every older gateway. */
   restore_plan?: VaultRestorePlan | null;
 }
 
 /**
- * The state read's restore recipe (vault-restore-recipe D-vault-18 to D-vault-21, D-vault-client-surface-20):
+ * The state read's restore recipe (D-vault-18 to D-vault-21, D-vault-client-surface-20):
  * the heads from the newest checkpoint boundary through the caller's own
  * newest generation (ascending, boundary-first — ONE entry when the
  * boundary IS the newest head), that boundary's checkpoint claim set +
@@ -1611,9 +1611,9 @@ interface VaultStateResponse {
     packs: Array<{ object_kind?: string; object_id: string; inline?: string; presigned_url?: string; expires_at?: string; edge_url?: string }>;
   } | null;
   /**
-   * vault-restore-recipe: present only when the caller sent `restore=1`
+   * Restore plan (D-vault-18): present only when the caller sent `restore=1`
    * AND the gateway located a qualifying checkpoint boundary. `heads`/
-   * checkpoint bytes ride inline ALWAYS (design D4); `packs[]` is the exact
+   * checkpoint bytes ride inline ALWAYS (D-vault-21); `packs[]` is the exact
    * `ObjectReadOut` wire shape `object-reads` returns (`url`, NOT
    * `presigned_url` — unlike `delta.packs[]`'s own, differently-named field
    * — plus the optional `inline`/`edge_url` companions) this client already
@@ -1973,7 +1973,7 @@ export function createVaultHttpTransport(client: Client, options: VaultHttpTrans
         delta = null;
       }
     }
-    // Restore-plan decode (vault-restore-recipe D-vault-18 to D-vault-21, D-vault-client-surface-20): the SAME
+    // Restore-plan decode (D-vault-18 to D-vault-21, D-vault-client-surface-20): the SAME
     // forgiving posture as `delta` above — ANY structural or resolution
     // anomaly drops the whole plan, never throws, so a hiccup fetching one
     // above-cap pack never fails the state read itself (head/carriers/delta
@@ -2947,7 +2947,7 @@ export class Vault {
    */
   private stateDeltaPacks: Map<string, Uint8Array> | null = null;
   /**
-   * The state read's restore plan (vault-restore-recipe D-vault-18 to D-vault-21, D-vault-client-surface-20),
+   * The state read's restore plan (D-vault-18 to D-vault-21, D-vault-client-surface-20),
    * stashed RAW — never verified at stash time, unlike `stateDeltaPacks`
    * (whose heads self-check before entering the shared keystore cache): a
    * plan's heads/checkpoint/packs are only ever verified by {@link
@@ -3405,7 +3405,7 @@ export class Vault {
     // that is generations behind — exactly the multi-checkout shape the
     // bench runs.
     //
-    // `restore` (vault-restore-recipe D-vault-19, D-vault-client-surface-21) rides the SAME state
+    // `restore` (D-vault-19, D-vault-client-surface-21) rides the SAME state
     // read — never a second round trip — so the caller (`restoreObjectsInto`,
     // via `materialize`/`verifyToNewest`) declares it only on the wholesale
     // shape (see that method's own doc comment). This call declining the
@@ -3431,7 +3431,7 @@ export class Vault {
     // path must never parse `state.head` as a {@link VaultHead} when it
     // is actually genesis's bytes.
     if (state.delta) this.consumeStateDelta(state.delta);
-    // vault-restore-recipe: stashed RAW (never verified here — see the
+    // Restore plan: stashed RAW (never verified here — see the
     // field's own doc comment); a genesis-only response (below) still runs
     // this line first, but `assembleVaultRestorePlan` never fires server-side
     // before an ordinary head exists, so `state.restore_plan` is simply
@@ -3606,7 +3606,7 @@ export class Vault {
     // own epoch could not be resolved without the network read this path
     // exists to avoid) — the caller falls straight through to the UNCHANGED
     // readHead + listHeads flow below, byte-identical to before this change.
-    // `options.restore` (vault-restore-recipe) rides along unchanged —
+    // `options.restore` (D-vault-19) rides along unchanged —
     // declined exactly when the fast path itself is declined, so a caller
     // more than one generation behind never gets (or needs) a plan here.
     const fastPath = await this.tryStateFastPath(pin, options.deltaSince, options.restore);
@@ -6296,7 +6296,7 @@ export class Vault {
     const marker = await readVaultRestoreMarker(targetRepoDir);
     const markerMatches = (a: VaultRestoreMarker | null, b: VaultRestoreMarker | null): boolean =>
       a === null ? b === null : b !== null && a.generation === b.generation && a.head_sha256 === b.head_sha256;
-    // vault-restore-recipe D-vault-19, D-vault-client-surface-21: a marker-absent materialize is,
+    // D-vault-19, D-vault-client-surface-21: a marker-absent materialize is,
     // by construction, the wholesale shape (a fresh target has nothing to
     // replay incrementally) — declare restore intent here so a capable
     // gateway's plan rides THIS read rather than a second one. Mirrors the
@@ -6324,7 +6324,7 @@ export class Vault {
       return { refs: newest.refs, head_target: newest.head_target, generation: newest.generation, retained_refs };
     }
 
-    // vault-restore-recipe (D-vault-18 to D-vault-21, D-vault-client-surface-20/21): consume a plan that already
+    // D-vault-18 to D-vault-21, D-vault-client-surface-20/21: consume a plan that already
     // rode this method's OWN materialize() (the `restore: true` request
     // above, or the reused list-phase read) BEFORE paying for the backward
     // walk below at all. `tryConsumeRestorePlan` verifies from scratch and
@@ -6401,8 +6401,7 @@ export class Vault {
         incremental = false;
         heads.length = 0;
         cur = newest.head;
-        // vault-restore-recipe (D-vault-18/19, task 2.1's named fallback
-        // shape): the marker WAS present when this method's own materialize()
+        // D-vault-18/19 (the named fallback shape): the marker WAS present when this method's own materialize()
         // ran, so `restore` was never declared and no plan rode that read —
         // fetch one now, dedicated, before falling through to the ordinary
         // wholesale walk. Best-effort: an older gateway, a network fault, a
@@ -6442,7 +6441,7 @@ export class Vault {
   }
 
   /**
-   * The shared restore tail (vault-restore-recipe): apply `heads`'
+   * The shared restore tail (D-vault-client-surface-20): apply `heads`'
    * checkpoint (if any) + WAL packs into `targetRepoDir`, verify §4.7
    * coverage, reconcile retained refs, and advance the marker — IDENTICALLY
    * whether `heads` came from {@link restoreObjectsInto}'s own backward walk
@@ -6462,7 +6461,7 @@ export class Vault {
    * packs (`stateDeltaPacks` never carries checkpoint packs — a delta span
    * never crosses a checkpoint boundary). Both are `null` on the ordinary
    * walk path, in which case every line below is byte-identical to the
-   * pre-vault-restore-recipe shape.
+   * pre-restore-plan shape.
    */
   /**
    * vault-multi-writer (rev 47): the key a head's own checkpoint claim set
@@ -6551,7 +6550,7 @@ export class Vault {
     // skip the network ENTIRELY — but only after hashing to their carrying
     // head's receipt (a lying delta is a plain miss; the ordinary fetch
     // below reproduces the unbatched behavior for that slot). The buffer is
-    // consumed exactly once. vault-restore-recipe extends the SAME
+    // consumed exactly once. The restore plan extends the SAME
     // short-circuit to `planPacks` (a verified plan's own pack bytes) —
     // checked SECOND so a delta hit never gets shadowed by a plan hit for
     // the same slot (the two never coexist in practice, per `getState`'s
@@ -6583,7 +6582,7 @@ export class Vault {
       let claimSet: VaultCheckpointClaimSet;
       let manifest: VaultCheckpointManifest;
       if (precheckedCheckpoint) {
-        // vault-restore-recipe: already fetched + verified (signature,
+        // Restore plan: already fetched + verified (signature,
         // cross-equality) by `verifyRestorePlan` against the plan's own
         // inline bytes — no network read, no re-verify.
         ({ claimSet, manifest } = precheckedCheckpoint);
@@ -6680,7 +6679,7 @@ export class Vault {
    * genesis/boundary linkage) and, when the boundary carries a checkpoint,
    * its claim set + manifest (signature, cross-equality) — the SAME
    * obligations {@link applyRestoreHeads}'s ordinary path runs, against
-   * plan-supplied bytes instead of network-fetched ones (design D5: "the
+   * plan-supplied bytes instead of network-fetched ones (D-vault-client-surface-20: "the
    * plan is transport, never trust"). Returns `null` on ANY failure — a
    * self-inconsistent head, a broken link, a wrong newest, a bad signature,
    * a cross-equality mismatch, anything the reused `decodeCarrierFrame`/
@@ -6742,7 +6741,7 @@ export class Vault {
       }
 
       // Stage A verified — cache-warm every plan head regardless of Stage B's
-      // outcome below (D3: a failed plan still costs the fallback nothing it
+      // outcome below (D-vault-client-surface-20: a failed plan still costs the fallback nothing it
       // already proved).
       if (!this.walkPrefetch) this.walkPrefetch = new Map();
       for (const p of parsed) this.walkPrefetch.set(vaultPaths.head(p.generation), p.bytes);
@@ -6771,7 +6770,7 @@ export class Vault {
   }
 
   /**
-   * Consume a stashed restore plan (vault-restore-recipe D-vault-18 to D-vault-21, D-vault-client-surface-20/21):
+   * Consume a stashed restore plan (D-vault-18 to D-vault-21, D-vault-client-surface-20/21):
    * verify it ({@link verifyRestorePlan}) and, on success, apply it via the
    * SAME shared tail the backward walk uses ({@link applyRestoreHeads}) —
    * `null` on absence or ANY verification failure, the caller's cue to run

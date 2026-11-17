@@ -744,7 +744,7 @@ describe("createVaultHttpTransport — edge_url from the wire response reaches e
     assert.deepEqual([...state.delta!.packs[0]!.bytes], [...packBytes]);
   });
 
-  it("getState sends `restore=1` on the wire and decodes `restore_plan` — inline packs consumed, url-only packs fetched (vault-restore-recipe)", async () => {
+  it("getState sends `restore=1` on the wire and decodes `restore_plan` — inline packs consumed, url-only packs fetched (D-vault-21)", async () => {
     const h1 = new Uint8Array([1, 1]);
     const h2 = new Uint8Array([2, 2]);
     const inlinePack = new Uint8Array([9, 9, 9]);
@@ -788,7 +788,7 @@ describe("createVaultHttpTransport — edge_url from the wire response reaches e
     assert.deepEqual(fetchCalls, ["https://origin.example/urlpack"], "the inline pack never dialed the object store");
   });
 
-  it("getState combines `since` and `restore` on the wire — orthogonal query params (vault-restore-recipe D-vault-19)", async () => {
+  it("getState combines `since` and `restore` on the wire — orthogonal query params (D-vault-19)", async () => {
     const { client } = fakeClient({
       requestResponses: {
         [`/vaults/v1/${REPO}/state?since=0000000000000001&restore=1`]: {
@@ -821,7 +821,7 @@ describe("createVaultHttpTransport — edge_url from the wire response reaches e
     assert.equal(state.restore_plan, undefined, "restore not requested, no restore_plan");
   });
 
-  it("getState drops the whole restore_plan on a structurally malformed head — never a partial/pretend plan (vault-restore-recipe)", async () => {
+  it("getState drops the whole restore_plan on a structurally malformed head — never a partial/pretend plan (D-vault-client-surface-20)", async () => {
     // Decode-time forgiveness mirrors the `delta` arm exactly: this layer
     // only rejects STRUCTURAL malformation (a missing/wrong-typed field);
     // hash/chain/signature verification is `Vault`'s own job,
