@@ -1290,7 +1290,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "2ab3afa06033b5efdfeec23a2dedb1e7bb936557beaa688de02cc8bf1e63144b",
+      "sha256": "4ac3d691d5e108da1247372abdceda8760c0f1d9fbc59478597fd09ba7ac5481",
       "outputs": [],
       "url": null,
       "checks": [
@@ -1390,7 +1390,7 @@
       "purpose": "guide",
       "interface": "cli",
       "exception": "Setup/build commands, application code, output and explicit native-reference sections are allowed.",
-      "sha256": "69f8ce38604537d236316517fa85b3ad2ed56c073a866ec17560326924b0fc3c",
+      "sha256": "c867c5e38fd109b71d9fcd0d7d5f0ab0a8d64f0cd479e802bc58edfc1b175d46",
       "outputs": [],
       "url": null,
       "checks": [
