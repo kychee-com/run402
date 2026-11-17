@@ -859,7 +859,7 @@ console.log(joined.restored.dir); // the fresh checkout, dirty state reapplied
 console.log(joined.inviter?.name); // who invited you, and whether they're still live
 
 // then, the room is the channel:
-const heard = await r.rooms.waitForMessages(joined.membership.organization_id, joined.room.room_key, { presenceId: "prs_…" });
+const heard = await r.rooms.waitForMessages(joined.membership.org_id, joined.room.room_key, { presenceId: "prs_…" });
 console.log(heard.settled, heard.messages, heard.live_presences);
 ```
 

@@ -118,7 +118,7 @@ export interface MeteringBlock {
 
 /** Options for {@link Billing.setMetering}. Amounts are micro-dollars. */
 export interface SetMeteringOptions {
-  organizationId: string;
+  orgId: string;
   /** Turn metered usage on or off. Off keeps the cap and the card for next time. */
   enabled: boolean;
   /** The monthly cap, at least `1_000_000` ($1). Required the first time metering is enabled. */
@@ -292,7 +292,7 @@ export type CreateCheckoutOptions =
     };
 
 export interface AutoRechargeOptions {
-  organizationId: string;
+  orgId: string;
   enabled: boolean;
   threshold?: number;
 }
@@ -333,11 +333,11 @@ function classifyBillingIdentifier(
 /** Read organization billing detail by canonical id: `GET /orgs/v1/:org_id/billing`. */
 function fetchOrganizationById(
   client: Client,
-  organizationId: string,
+  orgId: string,
   context: string,
 ): Promise<OrganizationDetail> {
   return client.request<OrganizationDetail>(
-    `/orgs/v1/${encodeURIComponent(organizationId)}/billing`,
+    `/orgs/v1/${encodeURIComponent(orgId)}/billing`,
     { context },
   );
 }
@@ -553,7 +553,7 @@ export class Billing {
       assertPositiveSafeInteger(opts.limit, "limit", "fetching billing history");
     }
     const id = classifyBillingIdentifier(identifier, "fetching billing history");
-    const organizationId = id.kind === "org_id"
+    const orgId = id.kind === "org_id"
       ? id.value
       : (await fetchOrganizationByLookup(this.client, id.kind, id.value, "fetching billing history"))
           .org_id;
@@ -561,7 +561,7 @@ export class Billing {
     if (opts.limit !== undefined) params.set("limit", String(opts.limit));
     if (opts.after !== undefined) params.set("after", opts.after);
     const query = params.toString();
-    const path = `/orgs/v1/${encodeURIComponent(organizationId)}/billing/history${query ? `?${query}` : ""}`;
+    const path = `/orgs/v1/${encodeURIComponent(orgId)}/billing/history${query ? `?${query}` : ""}`;
     return this.client.request<BillingHistoryResult>(path, {
       context: "fetching billing history",
     });
@@ -569,12 +569,12 @@ export class Billing {
 
   /** Create a Stripe checkout URL for an organization. */
   async createCheckout(
-    organizationId: string,
+    orgId: string,
     checkout: CreateCheckoutOptions,
   ): Promise<CreateCheckoutResult> {
-    assertNonEmptyString(organizationId, "organizationId", "creating checkout");
+    assertNonEmptyString(orgId, "orgId", "creating checkout");
     const body = checkoutRequestBody(checkout, "creating checkout");
-    return this.client.request<CreateCheckoutResult>(`/orgs/v1/${encodeURIComponent(organizationId)}/checkouts`, {
+    return this.client.request<CreateCheckoutResult>(`/orgs/v1/${encodeURIComponent(orgId)}/checkouts`, {
       method: "POST",
       body,
       context: "creating checkout",
@@ -587,12 +587,12 @@ export class Billing {
    * grant key for one of the org's projects may call it.
    */
   async createLightningTopup(
-    organizationId: string,
+    orgId: string,
     options: CreateLightningTopupOptions,
   ): Promise<LightningTopup> {
-    assertNonEmptyString(organizationId, "organizationId", "creating Lightning top-up");
+    assertNonEmptyString(orgId, "orgId", "creating Lightning top-up");
     const body = checkoutRequestBody({ rail: "lightning", amountSats: options.amountSats }, "creating Lightning top-up");
-    return this.client.request<LightningTopup>(`/orgs/v1/${encodeURIComponent(organizationId)}/checkouts`, {
+    return this.client.request<LightningTopup>(`/orgs/v1/${encodeURIComponent(orgId)}/checkouts`, {
       method: "POST",
       body,
       ...(options.idempotencyKey ? { headers: { "Idempotency-Key": options.idempotencyKey } } : {}),
@@ -601,11 +601,11 @@ export class Billing {
   }
 
   /** Read one top-up (the waiting client's poll). */
-  async getTopup(organizationId: string, topupId: string): Promise<LightningTopup> {
-    assertNonEmptyString(organizationId, "organizationId", "reading top-up");
+  async getTopup(orgId: string, topupId: string): Promise<LightningTopup> {
+    assertNonEmptyString(orgId, "orgId", "reading top-up");
     assertNonEmptyString(topupId, "topupId", "reading top-up");
     return this.client.request<LightningTopup>(
-      `/orgs/v1/${encodeURIComponent(organizationId)}/checkouts/${encodeURIComponent(topupId)}`,
+      `/orgs/v1/${encodeURIComponent(orgId)}/checkouts/${encodeURIComponent(topupId)}`,
       { context: "reading top-up" },
     );
   }
@@ -614,11 +614,11 @@ export class Billing {
    * Poll a top-up until it is paid, paid late, or expired (or the timeout
    * elapses, in which case the last observed state is returned).
    */
-  async waitForTopup(organizationId: string, topupId: string, options: WaitForTopupOptions = {}): Promise<LightningTopup> {
+  async waitForTopup(orgId: string, topupId: string, options: WaitForTopupOptions = {}): Promise<LightningTopup> {
     const pollMs = options.pollMs ?? 2_000;
     const deadline = Date.now() + (options.timeoutMs ?? 600_000);
     for (;;) {
-      const state = await this.getTopup(organizationId, topupId);
+      const state = await this.getTopup(orgId, topupId);
       options.onPoll?.(state);
       if (state.status !== "pending" || Date.now() >= deadline) return state;
       await new Promise((resolve) => setTimeout(resolve, pollMs));
@@ -638,7 +638,7 @@ export class Billing {
 
   /**
    * Link a wallet to an existing email organization to enable hybrid
-   * Stripe + x402 payments. `organizationId` is the canonical
+   * Stripe + x402 payments. `orgId` is the canonical
    * `org_id` (UUID) returned by `createEmailOrganization` /
    * `lookupOrganization`; the gateway addresses the route as
    * `POST /orgs/v1/:org_id/wallets`. Returns the gateway
@@ -647,13 +647,13 @@ export class Billing {
    * so callers can warn before the merge pushes usage `over_limit`.
    */
   async linkWallet(
-    organizationId: string,
+    orgId: string,
     wallet: string,
   ): Promise<LinkWalletResult> {
-    assertNonEmptyString(organizationId, "organizationId", "linking wallet");
+    assertNonEmptyString(orgId, "orgId", "linking wallet");
     assertEvmAddress(wallet, "wallet", "linking wallet");
     return this.client.request<LinkWalletResult>(
-      `/orgs/v1/${encodeURIComponent(organizationId)}/wallets`,
+      `/orgs/v1/${encodeURIComponent(orgId)}/wallets`,
       {
         method: "POST",
         body: { wallet: wallet.toLowerCase() },
@@ -664,7 +664,7 @@ export class Billing {
 
   /** Enable/disable email-pack auto-recharge. */
   async setAutoRecharge(opts: AutoRechargeOptions): Promise<void> {
-    assertNonEmptyString(opts.organizationId, "organizationId", "setting auto-recharge");
+    assertNonEmptyString(opts.orgId, "orgId", "setting auto-recharge");
     const body: Record<string, unknown> = {
       enabled: opts.enabled,
     };
@@ -673,7 +673,7 @@ export class Billing {
       body.threshold = opts.threshold;
     }
 
-    await this.client.request<unknown>(`/orgs/v1/${encodeURIComponent(opts.organizationId)}/billing/auto-recharge`, {
+    await this.client.request<unknown>(`/orgs/v1/${encodeURIComponent(opts.orgId)}/billing/auto-recharge`, {
       method: "PATCH",
       body,
       context: "setting auto-recharge",
@@ -702,9 +702,9 @@ export class Billing {
    * organization's metering block as every read prints it.
    */
   async setMetering(opts: SetMeteringOptions): Promise<SetMeteringResult> {
-    assertNonEmptyString(opts.organizationId, "organizationId", "setting metering");
+    assertNonEmptyString(opts.orgId, "orgId", "setting metering");
     const body = meteringRequestBody(opts, "setting metering");
-    return this.client.request<SetMeteringResult>(`/orgs/v1/${encodeURIComponent(opts.organizationId)}/billing/metering`, {
+    return this.client.request<SetMeteringResult>(`/orgs/v1/${encodeURIComponent(opts.orgId)}/billing/metering`, {
       method: "PATCH",
       body,
       context: "setting metering",
@@ -719,17 +719,17 @@ export class Billing {
    * never reaches Run402 or this client. Billing role or higher.
    */
   async createCardSetup(
-    organizationId: string,
+    orgId: string,
     opts: CreateCardSetupOptions = {},
   ): Promise<CreateCardSetupResult> {
-    assertNonEmptyString(organizationId, "organizationId", "creating card setup");
+    assertNonEmptyString(orgId, "orgId", "creating card setup");
     const body: Record<string, unknown> = {};
     if (opts.returnUrl !== undefined) {
       assertHttpUrl(opts.returnUrl, "returnUrl", "creating card setup");
       body.return_url = opts.returnUrl;
     }
     return this.client.request<CreateCardSetupResult>(
-      `/orgs/v1/${encodeURIComponent(organizationId)}/billing/payment-methods/setup`,
+      `/orgs/v1/${encodeURIComponent(orgId)}/billing/payment-methods/setup`,
       { method: "POST", body, context: "creating card setup" },
     );
   }

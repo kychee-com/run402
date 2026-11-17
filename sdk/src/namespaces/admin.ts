@@ -887,11 +887,11 @@ export class Admin {
    * @internal
    */
   _setLeasePerpetual(
-    organizationId: string,
+    orgId: string,
     perpetual: boolean,
   ): Promise<SetLeasePerpetualResult> {
     return this.client.request<SetLeasePerpetualResult>(
-      `/orgs/v1/admin/${encodeURIComponent(organizationId)}/lease-perpetual`,
+      `/orgs/v1/admin/${encodeURIComponent(orgId)}/lease-perpetual`,
       {
         method: "POST",
         headers: { "X-Admin-Mode": "1" },

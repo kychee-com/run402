@@ -1151,7 +1151,7 @@ console.log(minted.invite_key); // kgi1_… — print it ALONE, this is the only
 const joined = await r.repos.join({ key: "kgi1_…" });
 console.log(joined.inviter?.name, joined.restored.dir);
 
-const heard = await r.rooms.waitForMessages(joined.membership.organization_id, joined.room.room_key, { presenceId: "prs_…" });
+const heard = await r.rooms.waitForMessages(joined.membership.org_id, joined.room.room_key, { presenceId: "prs_…" });
 console.log(heard.settled, heard.live_presences);
 ```
 
@@ -1461,12 +1461,12 @@ non-`Run402Error` `unknown` inputs. Absent for non-quota errors.
 
 ```
 createEmailOrganization(email): Promise<EmailOrganization>
-linkWallet(organizationId, wallet): Promise<LinkWalletResult>  // organizationId = UUID; POST /orgs/v1/:org_id/wallets
-createCheckout(organizationId, checkout: { product: "balance_topup", amountUsdMicros: number } | { product: "tier", tier: "prototype" | "hobby" | "team" } | { product: "email_pack" }): Promise<CreateCheckoutResult>
-setAutoRecharge(opts: { organizationId: string, enabled: boolean, threshold? }): Promise<void>
-setMetering(opts: { organizationId: string, enabled: boolean, capUsdMicros?: number, standingOrder?: { enabled: boolean, thresholdUsdMicros?: number, rechargeUsdMicros?: number } }): Promise<{ org_id: string, metering: MeteringBlock | null }>  // PATCH /orgs/v1/:org_id/billing/metering
+linkWallet(orgId, wallet): Promise<LinkWalletResult>  // orgId = UUID; POST /orgs/v1/:org_id/wallets
+createCheckout(orgId, checkout: { product: "balance_topup", amountUsdMicros: number } | { product: "tier", tier: "prototype" | "hobby" | "team" } | { product: "email_pack" }): Promise<CreateCheckoutResult>
+setAutoRecharge(opts: { orgId: string, enabled: boolean, threshold? }): Promise<void>
+setMetering(opts: { orgId: string, enabled: boolean, capUsdMicros?: number, standingOrder?: { enabled: boolean, thresholdUsdMicros?: number, rechargeUsdMicros?: number } }): Promise<{ org_id: string, metering: MeteringBlock | null }>  // PATCH /orgs/v1/:org_id/billing/metering
 getMetering(identifier): Promise<MeteringBlock | null>  // the `metering` block of the organization read; null when never enabled and no card saved
-createCardSetup(organizationId, opts?: { returnUrl?: string }): Promise<{ org_id: string, setup_url: string, expires_at: string }>  // POST /orgs/v1/:org_id/billing/payment-methods/setup
+createCardSetup(orgId, opts?: { returnUrl?: string }): Promise<{ org_id: string, setup_url: string, expires_at: string }>  // POST /orgs/v1/:org_id/billing/payment-methods/setup
 checkBalance(identifier): Promise<OrganizationDetail>  // identifier = organization id (UUID) | wallet | email
 getOrganization(identifier): Promise<OrganizationDetail>
 lookupOrganization(identifier): Promise<OrganizationDetail>  // resolve wallet/email → organization (incl. org_id)

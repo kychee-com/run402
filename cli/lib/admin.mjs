@@ -116,10 +116,10 @@ function validateFlags(sub, args) {
 }
 
 async function leasePerpetual(args) {
-  const organizationId = args.find((a) => typeof a === "string" && !a.startsWith("--"));
+  const orgId = args.find((a) => typeof a === "string" && !a.startsWith("--"));
   const enable = args.includes("--enable");
   const disable = args.includes("--disable");
-  if (!organizationId) {
+  if (!orgId) {
     fail({
       code: "BAD_USAGE",
       message: "Missing <org_id>.",
@@ -134,7 +134,7 @@ async function leasePerpetual(args) {
     });
   }
   try {
-    const adminOrg = getSdk().admin.org(organizationId);
+    const adminOrg = getSdk().admin.org(orgId);
     const data = enable ? await adminOrg.pinLease() : await adminOrg.unpinLease();
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {

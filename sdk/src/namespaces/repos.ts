@@ -652,7 +652,7 @@ export interface VaultHandoffMintResult {
   kind: "handoff";
   minted_role: string;
   expires_at: string;
-  vault: { vault_id: string; address?: string | null; organization_id: string; project_id: string };
+  vault: { vault_id: string; address?: string | null; org_id: string; project_id: string };
   checkpoint: { generation: string; snapshot_oid_hmac: string };
   capture: {
     modified_captured: number;
@@ -690,7 +690,7 @@ export interface VaultHandoffResumeResult {
   /** The note's raw commit-message text, for a caller that wants Markdown rendering over the parsed shape. */
   note_raw: string | null;
   restored: { dir: string; branch: string; base_head_oid: string; stash_oid: string };
-  membership: { organization_id: string; role: string; status: string };
+  membership: { org_id: string; role: string; status: string };
   members: unknown[];
   expires_at: string;
   /** vault-multi-writer rev 47 (task 5.6, design D5) — this checkout's own writer activation. `outcome: "active"` covers BOTH a fresh submission this call made and the idempotent-skip case (a prior attempt's activation already landed) — the writer IS active either way. */
@@ -704,18 +704,19 @@ export interface VaultHandoffResumeResult {
  * `org_id`, `project_id` (docs/style.md's API-boundary vocabulary) — on
  * BOTH the handoff mint (`POST /vaults/v1/:vault_id/handoffs`) and
  * claim (`POST /vaults/v1/handoffs/:handoff_id/redeem`) responses. The SDK
- * groups them under `vault` with the `organization_id` spelling every other
- * SDK result uses. Neither response carries a slug-form address, so
+ * groups them under `vault`, renaming only `repo_id` to `vault_id`; the org
+ * stays `org_id`, as at every Run402 API boundary. Neither response carries
+ * a slug-form address, so
  * `address` is `null` unless the caller already knows one (a slug-form
  * remote at mint time). Pure; exported for tests.
  */
 export function handoffVaultFromWire(wire: { repo_id: string; org_id: string; project_id: string }, address: string | null = null): VaultHandoffMintResult["vault"] {
-  return { vault_id: wire.repo_id, address, organization_id: wire.org_id, project_id: wire.project_id };
+  return { vault_id: wire.repo_id, address, org_id: wire.org_id, project_id: wire.project_id };
 }
 
-/** The redeem response's `membership` block (`org_id` on the wire) in the SDK's `organization_id` spelling. Pure; exported for tests. */
+/** The redeem response's `membership` block, `org_id` kept as the wire spells it. Pure; exported for tests. */
 export function handoffMembershipFromWire(wire: { org_id: string; role: string; status: string }): VaultHandoffResumeResult["membership"] {
-  return { organization_id: wire.org_id, role: wire.role, status: wire.status };
+  return { org_id: wire.org_id, role: wire.role, status: wire.status };
 }
 
 // ─── Invite / join result shapes (kygit-invite design D4/D5/D9) ─────────────
@@ -733,7 +734,7 @@ export const INVITE_DEFAULT_ROLE = "developer";
 
 /** A room's `(org_id, room_key)` pair, as it rides the invite mint/redeem responses. */
 export interface VaultInviteRoom {
-  organization_id: string;
+  org_id: string;
   room_key: string;
 }
 
@@ -761,7 +762,7 @@ export interface VaultInviteMintResult {
   kind: "invite";
   minted_role: string;
   expires_at: string;
-  vault: { vault_id: string; address?: string | null; organization_id: string; project_id: string };
+  vault: { vault_id: string; address?: string | null; org_id: string; project_id: string };
   room: VaultInviteRoom;
   checkpoint: { generation: string; snapshot_oid_hmac: string };
   capture: {
@@ -813,7 +814,7 @@ export interface VaultInviteJoinResult {
   /** The note's raw commit-message text, for a caller that wants Markdown rendering over the parsed shape. */
   note_raw: string | null;
   restored: { dir: string; branch: string; base_head_oid: string; stash_oid: string };
-  membership: { organization_id: string; role: string; status: string };
+  membership: { org_id: string; role: string; status: string };
   members: unknown[];
   room: VaultInviteRoom;
   inviter: VaultInviteInviter | null;
@@ -3364,7 +3365,7 @@ export class Repos {
         response,
         options.address && vaultRemoteAddressForm(options.address) === "slug" ? `${options.address.org_id}/${options.address.project_id}` : null,
       ),
-      room: { organization_id: response.room?.org_id ?? repoFile.org_id, room_key: response.room?.room_key ?? roomKey },
+      room: { org_id: response.room?.org_id ?? repoFile.org_id, room_key: response.room?.room_key ?? roomKey },
       checkpoint: response.checkpoint,
       capture: {
         modified_captured: snapshot.modified_captured.length,
@@ -3594,7 +3595,7 @@ export class Repos {
     const myWriterKeyId = identity.signing_fingerprint;
     keystore.saveRepo({
       repo_id: vault.vault_id,
-      org_id: vault.organization_id,
+      org_id: vault.org_id,
       project_id: vault.project_id ?? "",
       k_repo_hex: payload.k_e_hex,
       epoch: payload.epoch,
@@ -3610,7 +3611,7 @@ export class Repos {
 
     const targetDir = resolveResumeTargetDir(options.to, vault.address, vault.vault_id);
     options.onLine?.(`resuming into ${targetDir}`);
-    const remoteUrl = vaultRemoteUrl(vault.organization_id, vault.project_id);
+    const remoteUrl = vaultRemoteUrl(vault.org_id, vault.project_id);
     await cloneVaultRemote(remoteUrl, targetDir);
     // A vault with no branch heads clones empty; bring the checkpoint in now,
     // before anything is activated, so a missing commit fails cleanly.
@@ -3625,7 +3626,7 @@ export class Repos {
       targetDir,
       vault.vault_id,
       addressParts && addressParts.length === 2 ? { org_slug: addressParts[0]!, repo_name: addressParts[1]! } : undefined,
-      { project_id: vault.project_id, org_id: vault.organization_id },
+      { project_id: vault.project_id, org_id: vault.org_id },
     );
 
     // kygit-invite design D5: restore is kind-agnostic, so the same
@@ -3904,7 +3905,7 @@ export class Repos {
     const myWriterKeyId = identity.signing_fingerprint;
     keystore.saveRepo({
       repo_id: vault.vault_id,
-      org_id: vault.organization_id,
+      org_id: vault.org_id,
       project_id: vault.project_id ?? "",
       k_repo_hex: payload.k_e_hex,
       epoch: payload.epoch,
@@ -3918,7 +3919,7 @@ export class Repos {
 
     const targetDir = resolveResumeTargetDir(options.to, vault.address, vault.vault_id);
     options.onLine?.(`joining into ${targetDir}`);
-    const remoteUrl = vaultRemoteUrl(vault.organization_id, vault.project_id);
+    const remoteUrl = vaultRemoteUrl(vault.org_id, vault.project_id);
     await cloneVaultRemote(remoteUrl, targetDir);
     // A vault with no branch heads clones empty; bring the checkpoint in now,
     // before anything is activated, so a missing commit fails cleanly.
@@ -3938,7 +3939,7 @@ export class Repos {
       targetDir,
       vault.vault_id,
       addressParts && addressParts.length === 2 ? { org_slug: addressParts[0]!, repo_name: addressParts[1]! } : undefined,
-      { project_id: vault.project_id, org_id: vault.organization_id, room_key: roomKey },
+      { project_id: vault.project_id, org_id: vault.org_id, room_key: roomKey },
     );
 
     // design D5/D9 risk list: `.git/info/exclude` rather than `.gitignore`
@@ -4104,7 +4105,7 @@ export class Repos {
       restored: { dir: targetDir, branch: restored.branch, base_head_oid: restored.base_head_oid, stash_oid: restored.stash_oid },
       membership: handoffMembershipFromWire(redeem.membership),
       members: redeem.members ?? [],
-      room: { organization_id: redeem.room?.org_id ?? redeem.org_id, room_key: roomKey },
+      room: { org_id: redeem.room?.org_id ?? redeem.org_id, room_key: roomKey },
       inviter: redeem.inviter ?? null,
       presence: myPresence,
       presence_failure: presenceFailure,

@@ -150,9 +150,9 @@ async function adopt(args) {
   const values = ["--org", "--identity-link", "--idempotency-key"];
   assertKnownFlags(a, values, values);
   requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz adopt direct [--org <org_id>] --identity-link <idlnk_id>" });
-  const organizationId = await resolveOrgId(a, { cmd: "buzz" });
+  const orgId = await resolveOrgId(a, { cmd: "buzz" });
   return invoke(() => getSdk({ authMode: "wallet" }).buzz.adopt({
-    organizationId,
+    orgId,
     identityLinkId: requiredFlag(a, "--identity-link"),
     idempotencyKey: flagValue(a, "--idempotency-key") ?? undefined,
   }));
@@ -178,7 +178,7 @@ async function adoptionOffer(args) {
   assertKnownFlags(a, values, values);
   requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz adopt offer [--org <org_id>] --identity-link <idlnk_id>" });
   const deploymentPath = flagValue(a, "--deployment-context-file");
-  const organizationId = await resolveOrgId(a, { cmd: "buzz" });
+  const orgId = await resolveOrgId(a, { cmd: "buzz" });
   return invoke(async () => {
     const client = getSdk({ authMode: "wallet" });
     const status = await client.buzz.status();
@@ -191,7 +191,7 @@ async function adoptionOffer(args) {
       });
     }
     return client.buzz.offerAdoption({
-      organizationId,
+      orgId,
       identityLinkId: requiredFlag(a, "--identity-link"),
       deploymentContext: deploymentPath ? readJsonFile(deploymentPath, "--deployment-context-file") : undefined,
       idempotencyKey: flagValue(a, "--idempotency-key") ?? undefined,
@@ -261,9 +261,9 @@ async function install(args) {
   assertKnownFlags(a, values, values);
   requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz install [--org <org_id>] --community <subject> [--authority <hex>]" });
   const policyFile = flagValue(a, "--policy-file");
-  const organizationId = await resolveOrgId(a, { cmd: "buzz" });
+  const orgId = await resolveOrgId(a, { cmd: "buzz" });
   return invoke(() => getSdk().buzz.install({
-    organizationId,
+    orgId,
     buzzCommunitySubject: requiredFlag(a, "--community"),
     buzzCommunityAuthoritySubject: flagValue(a, "--authority") ?? undefined,
     enrollmentPolicy: policyFile ? readJsonFile(policyFile, "--policy-file") : undefined,
@@ -278,7 +278,7 @@ async function enroll(args) {
     const values = ["--org", "--status"];
     assertKnownFlags(a, values, values);
     requirePositionalCount(a, values, { min: 0, max: 0, command: "run402 buzz enroll list [--org <org_id>] [--status <state>]" });
-    return invoke(() => getSdk().buzz.enrollments.list({ organizationId: flagValue(a, "--org") ?? undefined, status: flagValue(a, "--status") ?? undefined }));
+    return invoke(() => getSdk().buzz.enrollments.list({ orgId: flagValue(a, "--org") ?? undefined, status: flagValue(a, "--status") ?? undefined }));
   }
   if (operation === "show") {
     const a = normalizeArgv(rest);

@@ -548,7 +548,7 @@ describe("billing.setAutoRecharge", () => {
 
       await assert.rejects(
         sdk.billing.setAutoRecharge({
-          organizationId: "org_123",
+          orgId: "org_123",
           enabled: true,
           threshold,
         }),
@@ -566,12 +566,12 @@ describe("billing.setAutoRecharge", () => {
     const sdk = makeSdk(fetch);
 
     await sdk.billing.setAutoRecharge({
-      organizationId: "org_zero",
+      orgId: "org_zero",
       enabled: true,
       threshold: 0,
     });
     await sdk.billing.setAutoRecharge({
-      organizationId: "org_positive",
+      orgId: "org_positive",
       enabled: true,
       threshold: 2000,
     });
@@ -624,7 +624,7 @@ describe("billing.setMetering", () => {
     const sdk = makeSdk(fetch);
 
     const result = await sdk.billing.setMetering({
-      organizationId: "org/../x",
+      orgId: "org/../x",
       enabled: true,
       capUsdMicros: 50_000_000,
       standingOrder: { enabled: true, thresholdUsdMicros: 10_000_000, rechargeUsdMicros: 20_000_000 },
@@ -645,7 +645,7 @@ describe("billing.setMetering", () => {
   it("sends only what was named (disable keeps the cap and the card)", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse({ org_id: "org_123", metering: { ...METERING_BLOCK, enabled: false } }));
     const sdk = makeSdk(fetch);
-    await sdk.billing.metering({ organizationId: "org_123", enabled: false });
+    await sdk.billing.metering({ orgId: "org_123", enabled: false });
     assert.deepEqual(JSON.parse(calls[0]!.body as string), { enabled: false });
   });
 
@@ -656,17 +656,17 @@ describe("billing.setMetering", () => {
     const sdk = makeSdk(fetch);
     const isLocal = (err: unknown) => err instanceof LocalError && err.context === "setting metering";
 
-    await assert.rejects(sdk.billing.setMetering({ organizationId: "org_123", enabled: true, capUsdMicros: 999_999 }), isLocal);
-    await assert.rejects(sdk.billing.setMetering({ organizationId: "org_123", enabled: true, capUsdMicros: 1.5 }), isLocal);
+    await assert.rejects(sdk.billing.setMetering({ orgId: "org_123", enabled: true, capUsdMicros: 999_999 }), isLocal);
+    await assert.rejects(sdk.billing.setMetering({ orgId: "org_123", enabled: true, capUsdMicros: 1.5 }), isLocal);
     await assert.rejects(
-      sdk.billing.setMetering({ organizationId: "org_123", enabled: true, standingOrder: { enabled: true, thresholdUsdMicros: 4_999_999 } }),
+      sdk.billing.setMetering({ orgId: "org_123", enabled: true, standingOrder: { enabled: true, thresholdUsdMicros: 4_999_999 } }),
       isLocal,
     );
     await assert.rejects(
-      sdk.billing.setMetering({ organizationId: "org_123", enabled: true, standingOrder: { enabled: true, rechargeUsdMicros: -1 } }),
+      sdk.billing.setMetering({ orgId: "org_123", enabled: true, standingOrder: { enabled: true, rechargeUsdMicros: -1 } }),
       isLocal,
     );
-    await assert.rejects(sdk.billing.setMetering({ organizationId: "", enabled: true }), isLocal);
+    await assert.rejects(sdk.billing.setMetering({ orgId: "", enabled: true }), isLocal);
     assert.equal(calls.length, 0);
   });
 });

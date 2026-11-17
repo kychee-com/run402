@@ -5,10 +5,11 @@
  * The gateway names the vault by its three ids — `repo_id`, `org_id`,
  * `project_id` (docs/style.md vocabulary) — and the minted role as `role`;
  * the claim's `membership` block spells the org `org_id` too. The SDK groups
- * the ids under `vault` and uses `organization_id` like every other SDK
- * result. Reading `minted_role` / `vault` / `membership.organization_id`
- * off the wire — names the gateway never sends — prints "handoff minted:
- * role undefined" at the CLI and refuses every `resume`. The fixtures
+ * the ids under `vault` and keeps the org identifier `org_id` on every
+ * result, as it is at every Run402 API boundary — never `organization_id`.
+ * Reading `minted_role` / `vault` / `membership.organization_id` off the
+ * wire — names the gateway never sends — prints "handoff minted: role
+ * undefined" at the CLI and refuses every `resume`. The fixtures
  * below are the documented response bodies (llms-full.txt "Handoff /
  * resume"), so a drift on either side fails here first.
  *
@@ -57,7 +58,7 @@ describe("handoffVaultFromWire — the gateway's three ids become the SDK's `vau
     assert.deepEqual(handoffVaultFromWire(MINT_RESPONSE), {
       vault_id: MINT_RESPONSE.repo_id,
       address: null,
-      organization_id: MINT_RESPONSE.org_id,
+      org_id: MINT_RESPONSE.org_id,
       project_id: MINT_RESPONSE.project_id,
     });
   });
@@ -77,17 +78,23 @@ describe("handoffVaultFromWire — the gateway's three ids become the SDK's `vau
     const wrongSpellings = { minted_role: "owner", vault: { vault_id: "x", organization_id: "y", project_id: "z" } } as unknown as Parameters<typeof handoffVaultFromWire>[0];
     const mapped = handoffVaultFromWire(wrongSpellings);
     assert.equal(mapped.vault_id, undefined);
-    assert.equal(mapped.organization_id, undefined);
+    assert.equal(mapped.org_id, undefined);
     assert.equal(mapped.project_id, undefined);
   });
 });
 
-describe("handoffMembershipFromWire — the claim's `membership.org_id` becomes `organization_id`", () => {
-  it("maps role and status through unchanged", () => {
+describe("handoffMembershipFromWire — the claim's (and the join's) `membership` keeps `org_id`", () => {
+  it("maps org_id, role and status through unchanged", () => {
     assert.deepEqual(handoffMembershipFromWire(CLAIM_RESPONSE.membership), {
-      organization_id: MINT_RESPONSE.org_id,
+      org_id: MINT_RESPONSE.org_id,
       role: "owner",
       status: "active",
     });
+  });
+
+  it("never renames the org identifier to `organization_id`", () => {
+    const membership = handoffMembershipFromWire(CLAIM_RESPONSE.membership);
+    assert.equal(Object.hasOwn(membership, "organization_id"), false);
+    assert.equal(Object.hasOwn(handoffVaultFromWire(MINT_RESPONSE), "organization_id"), false);
   });
 });

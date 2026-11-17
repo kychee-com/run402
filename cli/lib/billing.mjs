@@ -363,7 +363,7 @@ async function linkWallet(args) {
   const parsedArgs = normalizeArgv(args);
   assertKnownFlags(parsedArgs, ["--org", "--address", "--help", "-h"], ["--org", "--address"]);
   const walletFlag = flagValue(parsedArgs, "--address");
-  const { orgId: organizationId, rest } = await takeOrgPositional(parsedArgs, ["--org", "--address"], { cmd: "billing" });
+  const { orgId, rest } = await takeOrgPositional(parsedArgs, ["--org", "--address"], { cmd: "billing" });
   const count = walletFlag ? 0 : 1;
   requireRest(rest, {
     min: count, max: count,
@@ -372,10 +372,10 @@ async function linkWallet(args) {
   });
   const wallet = walletFlag ?? rest[0];
   try {
-    const data = await getSdk().billing.linkWallet(organizationId, wallet);
+    const data = await getSdk().billing.linkWallet(orgId, wallet);
     const output = {
       status: data?.status ?? "ok",
-      org_id: data?.org_id ?? organizationId,
+      org_id: data?.org_id ?? orgId,
       wallet: data?.wallet ?? wallet.toLowerCase(),
       ...(data?.pool_implications ? { pool_implications: data.pool_implications } : {}),
     };
@@ -396,7 +396,7 @@ async function autoRecharge(args) {
   const threshold = parsedArgs.includes("--threshold")
     ? parseIntegerFlag("--threshold", thresholdStr, { min: 0 })
     : undefined;
-  const { orgId: organizationId, rest } = await takeOrgPositional(parsedArgs, valueFlags, { cmd: "billing" });
+  const { orgId, rest } = await takeOrgPositional(parsedArgs, valueFlags, { cmd: "billing" });
   const count = stateFlag ? 0 : 1;
   requireRest(rest, {
     min: count, max: count,
@@ -413,11 +413,11 @@ async function autoRecharge(args) {
   }
   try {
     await getSdk().billing.setAutoRecharge({
-      organizationId: organizationId,
+      orgId,
       enabled: state === "on",
       threshold,
     });
-    console.log(JSON.stringify({ org_id: organizationId, enabled: state === "on", updated: true }));
+    console.log(JSON.stringify({ org_id: orgId, enabled: state === "on", updated: true }));
   } catch (err) {
     reportSdkError(err);
   }
@@ -457,7 +457,7 @@ async function metering(args) {
   const rechargeUsdMicros = parsedArgs.includes("--recharge") ? parseUsdFlag("--recharge", flagValue(parsedArgs, "--recharge")) : undefined;
   const standingRaw = flagValue(parsedArgs, "--standing-order");
   if (standingRaw !== null) assertAllowedValue(standingRaw, ["on", "off"], "--standing-order");
-  const { orgId: organizationId, rest } = await takeOrgPositional(parsedArgs, valueFlags, { cmd: "billing" });
+  const { orgId, rest } = await takeOrgPositional(parsedArgs, valueFlags, { cmd: "billing" });
   requireRest(rest, {
     min: 0, max: 0,
     command: "run402 billing metering [<org_id>] [--enable --cap <usd> | --disable] [--standing-order <on|off>] [--threshold <usd>] [--recharge <usd>]",
@@ -470,9 +470,9 @@ async function metering(args) {
     // without on|off) keeps the current state for the part it does not name,
     // so `--standing-order on` alone never turns metering off.
     const needsCurrent = !writes || !(enable || disable) || (touchesStandingOrder && standingRaw === null);
-    const current = needsCurrent ? await sdk.billing.getMetering(organizationId) : null;
+    const current = needsCurrent ? await sdk.billing.getMetering(orgId) : null;
     if (!writes) {
-      console.log(JSON.stringify({ org_id: organizationId, metering: current }, null, 2));
+      console.log(JSON.stringify({ org_id: orgId, metering: current }, null, 2));
       return;
     }
     const enabled = enable ? true : disable ? false : (current?.enabled ?? false);
@@ -483,7 +483,7 @@ async function metering(args) {
           rechargeUsdMicros,
         }
       : undefined;
-    const data = await sdk.billing.setMetering({ organizationId, enabled, capUsdMicros, standingOrder });
+    const data = await sdk.billing.setMetering({ orgId, enabled, capUsdMicros, standingOrder });
     console.log(JSON.stringify(data, null, 2));
     if (data?.metering?.suspended_reason) {
       console.error(`Metering is suspended (${data.metering.suspended_reason}): fund the allowance, raise the cap, or save a card; it resumes on the next daily pass.`);
@@ -503,10 +503,10 @@ async function card(args) {
   const valueFlags = ["--org", "--return-url"];
   assertKnownFlags(parsedArgs, [...valueFlags, "--help", "-h"], valueFlags);
   const returnUrl = flagValue(parsedArgs, "--return-url");
-  const { orgId: organizationId, rest } = await takeOrgPositional(parsedArgs, valueFlags, { cmd: "billing" });
+  const { orgId, rest } = await takeOrgPositional(parsedArgs, valueFlags, { cmd: "billing" });
   requireRest(rest, { min: 0, max: 0, command: "run402 billing card setup [<org_id>] [--return-url <url>]" });
   try {
-    const data = await getSdk().billing.createCardSetup(organizationId, { returnUrl: returnUrl ?? undefined });
+    const data = await getSdk().billing.createCardSetup(orgId, { returnUrl: returnUrl ?? undefined });
     console.log(JSON.stringify(data, null, 2));
     console.error(`Open setup_url in a browser to save a card for this organization (the link expires ${data.expires_at}); then run402 billing metering --standing-order on.`);
   } catch (err) {

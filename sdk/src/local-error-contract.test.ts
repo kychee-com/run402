@@ -33,7 +33,7 @@ test("local SDK validation failures throw structured LocalError", async () => {
   await assertLocalError(
     r.billing.createCheckout("", { product: "tier", tier: "hobby" }),
     "creating checkout",
-    "organizationId must be a non-empty string.",
+    "orgId must be a non-empty string.",
   );
   await assertLocalError(
     r.email.createMailbox("prj_test", "ab"),

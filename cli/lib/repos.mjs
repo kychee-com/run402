@@ -2033,7 +2033,7 @@ async function invite(args) {
     // The inviter's own message must not wake the inviter's next `messages wait`:
     // advance this checkout's stored cursor past it (best-effort).
     if (result.room?.room_key && result.room_message?.posted && typeof result.room_message.cursor === "string") {
-      try { updateRoomState(result.room.organization_id, result.room.room_key, { cursor: result.room_message.cursor }); } catch { /* never fails a mint */ }
+      try { updateRoomState(result.room.org_id, result.room.room_key, { cursor: result.room_message.cursor }); } catch { /* never fails a mint */ }
     }
     if (asJson) {
       printJson(sdk, result);
@@ -2099,7 +2099,7 @@ async function joinInvite(args) {
     try {
       const dir = result.restored?.dir;
       if (dir && existsSync(dir)) {
-        updateRoomState(result.room.organization_id, result.room.room_key, {
+        updateRoomState(result.room.org_id, result.room.room_key, {
           ...(result.presence ? { presence_id: result.presence.presence_id, name: result.presence.name } : {}),
           ...(typeof result.cursor === "string" ? { cursor: result.cursor } : {}),
         }, { cwd: dir });

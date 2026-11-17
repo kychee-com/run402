@@ -213,7 +213,7 @@ export interface BuzzAgentEnrollment {
 }
 
 export interface BuzzHumanAdoptionCreateInput {
-  organizationId: string;
+  orgId: string;
   identityLinkId: string;
   idempotencyKey?: string;
 }
@@ -288,7 +288,7 @@ export interface BuzzHumanAdoptionOffer {
 }
 
 export interface BuzzHumanAdoptionOfferCreateInput {
-  organizationId: string;
+  orgId: string;
   identityLinkId: string;
   deploymentContext?: BuzzHumanAdoptionDeploymentContext;
   idempotencyKey?: string;
@@ -300,7 +300,7 @@ export interface BuzzHumanAdoptionAttemptCreateInput {
 }
 
 export interface BuzzCommunityInstallationCreateInput {
-  organizationId: string;
+  orgId: string;
   buzzCommunitySubject: string;
   /** Optional since the invite front door: the relay, not a named authority, admits the installation identity. */
   buzzCommunityAuthoritySubject?: string;

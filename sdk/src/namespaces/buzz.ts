@@ -75,16 +75,16 @@ export class BuzzHumanAdoptions {
       method: "POST",
       headers: headers(input.idempotencyKey),
       body: {
-        org_id: required(input.organizationId, "organizationId", "starting Buzz human adoption"),
+        org_id: required(input.orgId, "orgId", "starting Buzz human adoption"),
         identity_link_id: required(input.identityLinkId, "identityLinkId", "starting Buzz human adoption"),
       },
       context: "starting Buzz human adoption",
     });
   }
 
-  async list(organizationId: string): Promise<BuzzHumanAdoption[]> {
+  async list(orgId: string): Promise<BuzzHumanAdoption[]> {
     const response = await this.client.request<{ buzz_human_adoptions: BuzzHumanAdoption[] }>(
-      `/buzz-human-adoptions/v1?org_id=${encodeURIComponent(required(organizationId, "organizationId", "listing Buzz human adoptions"))}`,
+      `/buzz-human-adoptions/v1?org_id=${encodeURIComponent(required(orgId, "orgId", "listing Buzz human adoptions"))}`,
       { context: "listing Buzz human adoptions" },
     );
     return response.buzz_human_adoptions ?? [];
@@ -125,7 +125,7 @@ export class BuzzHumanAdoptionOffers {
       method: "POST",
       headers: headers(input.idempotencyKey),
       body: {
-        org_id: required(input.organizationId, "organizationId", "creating Buzz human-adoption offer"),
+        org_id: required(input.orgId, "orgId", "creating Buzz human-adoption offer"),
         identity_link_id: required(input.identityLinkId, "identityLinkId", "creating Buzz human-adoption offer"),
         ...(input.deploymentContext ? { deployment_context: input.deploymentContext } : {}),
       },
@@ -167,7 +167,7 @@ export class BuzzCommunityInstallations {
       method: "POST",
       headers: headers(input.idempotencyKey),
       body: {
-        org_id: required(input.organizationId, "organizationId", "starting Buzz community installation"),
+        org_id: required(input.orgId, "orgId", "starting Buzz community installation"),
         buzz_community_subject: required(input.buzzCommunitySubject, "buzzCommunitySubject", "starting Buzz community installation"),
         ...(input.buzzCommunityAuthoritySubject ? { buzz_community_authority_subject: input.buzzCommunityAuthoritySubject } : {}),
         ...(input.enrollmentPolicy ? { enrollment_policy: input.enrollmentPolicy } : {}),
@@ -176,9 +176,9 @@ export class BuzzCommunityInstallations {
     });
   }
 
-  async list(organizationId: string): Promise<BuzzCommunityInstallation[]> {
+  async list(orgId: string): Promise<BuzzCommunityInstallation[]> {
     const response = await this.client.request<{ buzz_community_installations: BuzzCommunityInstallation[] }>(
-      `/buzz-community-installations/v1?org_id=${encodeURIComponent(required(organizationId, "organizationId", "listing Buzz community installations"))}`,
+      `/buzz-community-installations/v1?org_id=${encodeURIComponent(required(orgId, "orgId", "listing Buzz community installations"))}`,
       { context: "listing Buzz community installations" },
     );
     return response.buzz_community_installations ?? [];
@@ -284,9 +284,9 @@ export class BuzzAgentEnrollments {
     });
   }
 
-  async list(options: { organizationId?: string; status?: BuzzAgentEnrollmentStatus } = {}): Promise<BuzzAgentEnrollment[]> {
+  async list(options: { orgId?: string; status?: BuzzAgentEnrollmentStatus } = {}): Promise<BuzzAgentEnrollment[]> {
     const query = new URLSearchParams();
-    if (options.organizationId) query.set("org_id", options.organizationId);
+    if (options.orgId) query.set("org_id", options.orgId);
     if (options.status) query.set("status", options.status);
     const suffix = query.size ? `?${query.toString()}` : "";
     const response = await this.client.request<{ buzz_agent_enrollments: BuzzAgentEnrollment[] }>(`/buzz-agent-enrollments/v1${suffix}`, { context: "listing Buzz agent enrollments" });
@@ -401,7 +401,7 @@ export class BuzzNotifications {
    * Buzz community owner completes; later routes on an already-authorized
    * installation come back `authorized` and active.
    */
-  async createRoute(organizationId: string, input: CreateBuzzEventRouteInput): Promise<CreatedBuzzEventRoute> {
+  async createRoute(orgId: string, input: CreateBuzzEventRouteInput): Promise<CreatedBuzzEventRoute> {
     const context = "creating Buzz event route";
     rejectSecrets(input);
     const orgWide = input?.projectScope === "org";
@@ -414,7 +414,7 @@ export class BuzzNotifications {
       method: "POST",
       headers: headers(input.idempotencyKey),
       body: {
-        org_id: required(organizationId, "organizationId", context),
+        org_id: required(orgId, "orgId", context),
         buzz_community_installation_id: required(input.installationId, "installationId", context),
         route_name: required(input.routeName, "routeName", context),
         buzz_channel_id: required(input.buzzChannelId, "buzzChannelId", context),
@@ -431,9 +431,9 @@ export class BuzzNotifications {
   }
 
   /** List the organization's routes, including retained revoked ones. */
-  async list(organizationId: string): Promise<BuzzEventRoute[]> {
+  async list(orgId: string): Promise<BuzzEventRoute[]> {
     const response = await this.client.request<{ buzz_project_event_routes: BuzzEventRoute[] }>(
-      `/buzz-project-event-routes/v1?org_id=${encodeURIComponent(required(organizationId, "organizationId", "listing Buzz event routes"))}`,
+      `/buzz-project-event-routes/v1?org_id=${encodeURIComponent(required(orgId, "orgId", "listing Buzz event routes"))}`,
       { context: "listing Buzz event routes" },
     );
     return response.buzz_project_event_routes ?? [];

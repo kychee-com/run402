@@ -109,7 +109,7 @@ describe("Buzz SDK namespace", () => {
       verified_at: "2026-07-31T10:00:00.000Z",
     };
     await run402.buzz.offerAdoption({
-      organizationId: "org_11111111111111111111111111111111",
+      orgId: "org_11111111111111111111111111111111",
       identityLinkId: "idlnk_22222222222222222222222222222222",
       deploymentContext,
       idempotencyKey: "offer-after-demo-1",
@@ -199,7 +199,7 @@ describe("Buzz SDK namespace", () => {
     const { run402, calls } = sdk(() => response({}));
     await assert.rejects(
       run402.buzz.communityInstallations.create({
-        organizationId: "org_11111111111111111111111111111111",
+        orgId: "org_11111111111111111111111111111111",
         buzzCommunitySubject: "buzz:community:acme.communities.buzz.xyz",
         enrollmentPolicy: { nsec: "nsec1never" } as never,
       }),
