@@ -92,7 +92,7 @@ function readCommandSource(filePath: string): string | null {
 /** Parse CLI commands as "module:subcommand" pairs */
 function parseCliCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "stripe", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors", "push", "app-repos"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "stripe", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors", "push", "app-repos"]) {
     for (const sub of parseSubcommands(join(__dirname, "cli/lib", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -141,7 +141,7 @@ function parseCliCommands(): string[] {
 /** Parse OpenClaw commands as "module:subcommand" pairs */
 function parseOpenClawCommands(): string[] {
   const cmds: string[] = [];
-  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "stripe", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "webhook-secret", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors", "push", "app-repos"]) {
+  for (const mod of ["admin", "wallets", "tier", "projects", "snapshots", "branches", "image", "storage", "assets", "cache", "cdn", "functions", "secrets", "jobs", "sites", "subdomains", "domains", "stripe", "apps", "email", "feedback", "agent", "ai", "auth", "billing", "contracts", "webhooks", "service", "deploy", "ci", "transfer", "orgs", "identity", "buzz", "grants", "deliveries", "contacts", "subscriptions", "archives", "rooms", "messages", "claims", "escalations", "repos", "events", "errors", "push", "app-repos"]) {
     for (const sub of parseSubcommands(join(__dirname, "openclaw/scripts", `${mod}.mjs`))) {
       cmds.push(`${mod}:${sub}`);
     }
@@ -620,7 +620,12 @@ const SURFACE: Capability[] = [
   // (positional `set k=v...`); the SDK keeps the read and write as separate methods.
   { id: "set_notification_preferences", endpoint: "PATCH /agent/v1/notifications/preferences",     cli: null,                            openclaw: null },
   { id: "test_notification",            endpoint: "POST /agent/v1/notifications/test",             cli: "contacts:test",                 openclaw: "contacts:test" },
-  { id: "rotate_webhook_secret",        endpoint: "POST /agent/v1/webhook-secret/rotate",          cli: "webhook-secret:rotate",         openclaw: "webhook-secret:rotate" },
+  // The wallet's webhook channel: one `contacts webhook` command reads it and
+  // carries the set / rm / rotate-secret verbs positionally.
+  { id: "get_webhook_channel",          endpoint: "GET /agent/v1/notifications/channels/webhook",   cli: "contacts:webhook",              openclaw: "contacts:webhook" },
+  { id: "set_webhook_channel",          endpoint: "POST /agent/v1/notifications/channels/webhook",   cli: null,                            openclaw: null },
+  { id: "remove_webhook_channel",       endpoint: "DELETE /agent/v1/notifications/channels/webhook", cli: null,                           openclaw: null },
+  { id: "rotate_webhook_secret",        endpoint: "POST /agent/v1/notifications/channels/webhook/rotate-secret", cli: null,                 openclaw: null },
 
   // ── Telegram notification channel + routing rules
   //    (notification-channel-routing-telegram) ─────────────────────────────
@@ -1337,7 +1342,10 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   get_notification_preferences: "admin.getNotificationPreferences",
   set_notification_preferences: "admin.setNotificationPreferences",
   test_notification: "admin.testNotification",
-  rotate_webhook_secret: "admin.rotateWebhookSecret",
+  get_webhook_channel: "admin.channels.getWebhook",
+  set_webhook_channel: "admin.channels.setWebhook",
+  remove_webhook_channel: "admin.channels.removeWebhook",
+  rotate_webhook_secret: "admin.channels.rotateWebhookSecret",
   start_contact_passkey_enrollment: "admin.startContactPasskeyEnrollment",
 
   // Telegram notification channel + routing rules

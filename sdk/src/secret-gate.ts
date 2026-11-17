@@ -209,9 +209,13 @@ export const SECRET_RETURNING_METHODS = {
     command: (transferId: unknown) => `run402 transfer accept ${arg(transferId, "<transfer_id>")}`,
     why: PROJECT_KEYS_WHY,
   },
-  "admin.rotateWebhookSecret": {
-    command: () => "run402 webhook-secret rotate",
+  "admin.channels.rotateWebhookSecret": {
+    command: () => "run402 contacts webhook rotate-secret",
     why: "The new webhook signing secret is returned once.",
+  },
+  "admin.channels.setWebhook": {
+    command: (url: unknown) => `run402 contacts webhook set ${arg(url, "<url>")}`,
+    why: "The first webhook URL mints a signing secret that is returned once.",
   },
 
   // ── the local wallet ─────────────────────────────────────────────────────
@@ -331,7 +335,7 @@ export const SECRET_RETURNING_METHODS = {
   "admin.rules.create": { when: (_i: unknown, proofs: unknown) => hasToken(proofs), command: () => "run402 subscriptions add", why: SIGN_IN_WHY },
   "admin.rules.update": { when: (_id: unknown, _p: unknown, proofs: unknown) => hasToken(proofs), command: () => "run402 subscriptions add", why: SIGN_IN_WHY },
   "admin.rules.delete": { when: (_id: unknown, proofs: unknown) => hasToken(proofs), command: (id: unknown) => `run402 subscriptions rm ${arg(id, "<rule_id>")}`, why: SIGN_IN_WHY },
-  "admin.setNotificationPreferences": { when: (_p: unknown, proofs: unknown) => hasToken(proofs), command: () => "run402 contacts preferences", why: SIGN_IN_WHY },
+  "admin.channels.removeWebhook": { when: (proofs: unknown) => hasToken(proofs), command: () => "run402 contacts webhook rm", why: SIGN_IN_WHY },
 
   // ── project end users' session tokens (the project's own auth) ───────────
   "auth.verifyMagicLink": { command: (projectId: unknown) => `run402 auth verify --token <token>${projectFlag(projectId)}`, why: "The end user's access token is returned once." },

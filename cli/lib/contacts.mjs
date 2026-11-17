@@ -45,8 +45,12 @@ Usage:
   run402 contacts add <email> [--level <1-10>] [--name <display>]
   run402 contacts connect telegram [--label <name>]
   run402 contacts rm <contact_id>
-  run402 contacts preferences
-  run402 contacts preferences set <key>=<value> [<key>=<value> ...]
+  run402 contacts preferences [--email <address>]
+  run402 contacts preferences set <key>=<value> [<key>=<value> ...] [--email <address>]
+  run402 contacts webhook
+  run402 contacts webhook set <https_url>
+  run402 contacts webhook rm
+  run402 contacts webhook rotate-secret
   run402 contacts test [--source app|platform] [--type <event_type>] [--severity <level>]
 
 Two kinds, one question:
@@ -58,6 +62,17 @@ Two kinds, one question:
 
 Every row carries \`kind\`. \`rm\` takes either kind's id and works out which.
 
+Preferences belong to the verified email a notice goes to, not to a wallet:
+a wallet acts on its verified contact email, a person signed in with
+\`run402 login\` on their own verified email (--email picks among several).
+Keys: lifecycle_events (off|critical_only|all), threshold_alerts
+(off|digest_only|immediate), digest_cadence (off|daily|weekly|monthly),
+digest_day_of_week (1-7), digest_hour_utc (0-23), locale, timezone.
+
+The webhook is the wallet's own channel. \`webhook set\` needs passkey
+assurance ('run402 login'); the first URL prints its signing secret EXACTLY
+once. \`webhook rotate-secret\` prints a new one; the previous stays valid 24h.
+
 Notes:
   - Adding an address with no verified contact email is ACCEPTED with a
     reachability warning — you must be able to configure the chain before the
@@ -67,14 +82,14 @@ Notes:
 
 async function preferences(args) {
   const parsedArgs = normalizeArgv(args);
-  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  assertKnownFlags(parsedArgs, ["--help", "-h", "--email"]);
   const positionals = positionalArgs(parsedArgs);
-  walletAuthHeaders("/agent/v1/notifications/preferences");
+  const email = flagValue(parsedArgs, "--email");
+  const opts = email ? { email } : {};
 
   if (positionals.length === 0) {
-    // GET preferences
     try {
-      const data = await getSdk().admin.getNotificationPreferences();
+      const data = await getSdk().admin.getNotificationPreferences(opts);
       console.log(JSON.stringify(data, null, 2));
     } catch (err) {
       reportSdkError(err);
@@ -83,7 +98,7 @@ async function preferences(args) {
   }
 
   if (positionals[0] !== "set") {
-    fail({ code: "BAD_USAGE", message: "Usage: run402 contacts preferences [set <key>=<value> ...]" });
+    fail({ code: "BAD_USAGE", message: "Usage: run402 contacts preferences [set <key>=<value> ...] [--email <address>]" });
   }
 
   // SET — parse remaining positional args as key=value
@@ -95,20 +110,60 @@ async function preferences(args) {
     }
     const key = kv.slice(0, eq);
     const rawValue = kv.slice(eq + 1);
-    if (key === "digest_day_of_week" || key === "digest_hour_utc") {
-      patch[key] = Number(rawValue);
-    } else if (key === "webhook_url" && (rawValue === "null" || rawValue === "")) {
-      patch[key] = null;
-    } else {
-      patch[key] = rawValue;
-    }
+    patch[key] = key === "digest_day_of_week" || key === "digest_hour_utc" ? Number(rawValue) : rawValue;
   }
   try {
-    const data = await getSdk().admin.setNotificationPreferences(patch, await sessionProofs("/agent/v1/notifications/preferences"));
+    const data = await getSdk().admin.setNotificationPreferences(patch, opts);
     console.log(JSON.stringify(data, null, 2));
   } catch (err) {
     reportSdkError(err);
   }
+}
+
+async function webhook(args) {
+  const parsedArgs = normalizeArgv(args);
+  assertKnownFlags(parsedArgs, ["--help", "-h"]);
+  const positionals = positionalArgs(parsedArgs);
+  const verb = positionals[0];
+  const channels = getSdk().admin.channels;
+  try {
+    if (verb === undefined) {
+      console.log(JSON.stringify(await channels.getWebhook(), null, 2));
+      return;
+    }
+    if (verb === "set") {
+      if (positionals.length !== 2) {
+        fail({ code: "BAD_USAGE", message: "Usage: run402 contacts webhook set <https_url>" });
+      }
+      walletAuthHeaders("/agent/v1/notifications/channels/webhook");
+      const data = await channels.setWebhook(positionals[1], await sessionProofs("/agent/v1/notifications/channels/webhook"));
+      console.log(JSON.stringify(data, null, 2));
+      if (data.webhook_signing_secret) {
+        console.error("");
+        console.error("⚠  Store this signing secret NOW — it will not be shown again.");
+      }
+      return;
+    }
+    if (verb === "rm") {
+      walletAuthHeaders("/agent/v1/notifications/channels/webhook");
+      const data = await channels.removeWebhook(await sessionProofs("/agent/v1/notifications/channels/webhook"));
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    if (verb === "rotate-secret") {
+      walletAuthHeaders("/agent/v1/notifications/channels/webhook/rotate-secret");
+      const data = await channels.rotateWebhookSecret(await sessionProofs("/agent/v1/notifications/channels/webhook/rotate-secret"));
+      console.log(JSON.stringify(data, null, 2));
+      console.error("");
+      console.error("⚠  Store this secret NOW — it will not be shown again.");
+      console.error("⚠  Your previous secret remains valid for the next 24 hours.");
+      return;
+    }
+  } catch (err) {
+    reportSdkError(err);
+    return;
+  }
+  failUnknownSubcommand("contacts webhook", verb, { extraSubcommands: ["set", "rm", "rotate-secret"] });
 }
 
 // ---------------------------------------------------------------------------
@@ -421,6 +476,9 @@ export async function run(sub, args) {
       return;
     case "preferences":
       await preferences(rest);
+      return;
+    case "webhook":
+      await webhook(rest);
       return;
     case "test":
       // "Am I actually reachable?" — sends a synthetic event through the

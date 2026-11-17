@@ -154,10 +154,16 @@ export interface ListNotificationsResult {
   next_cursor: string | null;
 }
 
+/**
+ * A recipient's own notification preferences. They belong to the verified
+ * email a notice is delivered to, not to a wallet: one person has one set
+ * however they were reached (a wallet's verified contact email, or an
+ * organization membership). The webhook is the wallet's own channel; see
+ * `r.admin.channels.getWebhook()`.
+ */
 export interface NotificationPreferences {
-  channels: { email: boolean; webhook: boolean };
-  webhook_url: string | null;
-  webhook_signing_secret_configured: boolean;
+  /** The verified email these preferences belong to. */
+  recipient: string;
   digest_cadence: "off" | "daily" | "weekly" | "monthly";
   /** 1=Monday..7=Sunday. */
   digest_day_of_week: number;
@@ -174,7 +180,7 @@ export interface NotificationPreferences {
 }
 
 export type NotificationPreferencesPatch = Partial<
-  Omit<NotificationPreferences, "webhook_signing_secret_configured" | "security_events">
+  Omit<NotificationPreferences, "recipient" | "security_events">
 > & {
   /** Cannot be changed away from "always" — server returns 400. */
   security_events?: "always";
@@ -240,6 +246,33 @@ export interface TestNotificationResult {
     skipped_rules?: TestNotificationSkippedRule[];
   };
   note: string;
+}
+
+/** Which recipient's preferences to act on. */
+export interface NotificationPreferencesOptions {
+  /**
+   * One of the signed-in person's verified emails. Omit it to act on the
+   * oldest one (a person) or on the wallet's verified contact email (a wallet).
+   */
+  email?: string;
+}
+
+/** The wallet's webhook channel. */
+export interface WebhookChannel {
+  url: string | null;
+  configured: boolean;
+  secret_configured: boolean;
+  /** Set when repeated delivery failures disabled the webhook. */
+  disabled_at: string | null;
+  disabled_reason: string | null;
+  consecutive_failures: number;
+}
+
+/** `setWebhook`'s result. `webhook_signing_secret` is present only when this
+ *  call minted the wallet's first secret, and is shown exactly once. */
+export interface SetWebhookResult extends WebhookChannel {
+  webhook_signing_secret?: string;
+  note?: string;
 }
 
 export interface RotateWebhookSecretResult {
@@ -466,8 +499,14 @@ export interface DeleteRoutingRuleResult {
  * requires a VERIFIED contact email (bindings are addressed to it). See
  * `r.admin.setAgentContact` / `r.admin.verifyAgentContactEmail` and
  * `r.admin.startContactPasskeyEnrollment` (or `run402 login`) to reach that assurance level —
- * same ladder as {@link Admin.rotateWebhookSecret}.
+ * same ladder as {@link Channels.setWebhook}.
  */
+function notificationPreferencesPath(opts: NotificationPreferencesOptions): string {
+  return opts.email
+    ? `/agent/v1/notifications/preferences?email=${encodeURIComponent(opts.email)}`
+    : "/agent/v1/notifications/preferences";
+}
+
 export class Channels {
   constructor(private readonly client: Client) {}
 
@@ -500,6 +539,49 @@ export class Channels {
     return this.client.request<NotificationChannelsResult>(
       "/agent/v1/notifications/channels",
       { context: "listing notification channels" },
+    );
+  }
+
+  /** Read the wallet's webhook channel. */
+  async getWebhook(): Promise<WebhookChannel> {
+    return this.client.request<WebhookChannel>(
+      "/agent/v1/notifications/channels/webhook",
+      { context: "reading the webhook channel" },
+    );
+  }
+
+  /**
+   * Point the wallet's webhook at an https URL. Requires `operator_passkey`
+   * assurance. The first URL mints the signing secret and returns it exactly
+   * once as `webhook_signing_secret`; later calls keep the existing secret.
+   */
+  async setWebhook(url: string, proofs?: SessionProofs): Promise<SetWebhookResult> {
+    gateSecret(this.client, "admin.channels.setWebhook", url, proofs);
+    return this.client.request<SetWebhookResult>(
+      "/agent/v1/notifications/channels/webhook",
+      { method: "POST", body: { url }, context: "setting the webhook channel", ...sessionProofRequest(proofs) },
+    );
+  }
+
+  /** Remove the wallet's webhook URL. Requires `operator_passkey` assurance. */
+  async removeWebhook(proofs?: SessionProofs): Promise<WebhookChannel> {
+    gateSecret(this.client, "admin.channels.removeWebhook", proofs);
+    return this.client.request<WebhookChannel>(
+      "/agent/v1/notifications/channels/webhook",
+      { method: "DELETE", context: "removing the webhook channel", ...sessionProofRequest(proofs) },
+    );
+  }
+
+  /**
+   * Rotate the webhook signing secret. The new plaintext secret is returned
+   * EXACTLY once; the previous one stays valid for 24 hours. Requires
+   * `operator_passkey` assurance.
+   */
+  async rotateWebhookSecret(proofs?: SessionProofs): Promise<RotateWebhookSecretResult> {
+    gateSecret(this.client, "admin.channels.rotateWebhookSecret", proofs);
+    return this.client.request<RotateWebhookSecretResult>(
+      "/agent/v1/notifications/channels/webhook/rotate-secret",
+      { method: "POST", context: "rotating webhook signing secret", ...sessionProofRequest(proofs) },
     );
   }
 
@@ -775,27 +857,32 @@ export class Admin {
     );
   }
 
-  /** Read the current notification preferences. */
-  async getNotificationPreferences(): Promise<NotificationPreferences> {
+  /**
+   * Read your notification preferences. A wallet reads those of its verified
+   * contact email; a person signed in with `run402 login` reads those of their
+   * own verified email (`opts.email` picks among several). The result names
+   * the `recipient` it read. Answers 403 `RECIPIENT_EMAIL_NOT_HELD` when the
+   * caller holds no verified recipient email.
+   */
+  async getNotificationPreferences(opts: NotificationPreferencesOptions = {}): Promise<NotificationPreferences> {
     return this.client.request<NotificationPreferences>(
-      "/agent/v1/notifications/preferences",
+      notificationPreferencesPath(opts),
       { method: "GET", context: "fetching notification preferences" },
     );
   }
 
-  /** Patch notification preferences (assurance ladder applies). */
+  /** Update your notification preferences; same recipient rules as
+   *  {@link Admin.getNotificationPreferences}. */
   async setNotificationPreferences(
     patch: NotificationPreferencesPatch,
-    proofs?: SessionProofs,
+    opts: NotificationPreferencesOptions = {},
   ): Promise<NotificationPreferences> {
-    gateSecret(this.client, "admin.setNotificationPreferences", patch, proofs);
     return this.client.request<NotificationPreferences>(
-      "/agent/v1/notifications/preferences",
+      notificationPreferencesPath(opts),
       {
         method: "PATCH",
         body: patch as unknown as Record<string, unknown>,
         context: "updating notification preferences",
-        ...sessionProofRequest(proofs),
       },
     );
   }
@@ -818,19 +905,6 @@ export class Admin {
     return this.client.request<TestNotificationResult>(
       "/agent/v1/notifications/test",
       { method: "POST", body, context: "triggering test notification" },
-    );
-  }
-
-  /**
-   * Rotate the caller's webhook signing secret. The new plaintext secret
-   * is returned EXACTLY once. The previous secret remains valid for 24
-   * hours (dual-secret grace window). Requires `operator_passkey` assurance.
-   */
-  async rotateWebhookSecret(proofs?: SessionProofs): Promise<RotateWebhookSecretResult> {
-    gateSecret(this.client, "admin.rotateWebhookSecret", proofs);
-    return this.client.request<RotateWebhookSecretResult>(
-      "/agent/v1/webhook-secret/rotate",
-      { method: "POST", context: "rotating webhook signing secret", ...sessionProofRequest(proofs) },
     );
   }
 

@@ -108,7 +108,6 @@ Run `node scripts/documentation-inventory.mjs` to reject newly discovered unclas
 | public | [cli/lib/transfer.mjs](cli/lib/transfer.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/up.mjs](cli/lib/up.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/wallets.mjs](cli/lib/wallets.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
-| public | [cli/lib/webhook-secret.mjs](cli/lib/webhook-secret.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/webhooks.mjs](cli/lib/webhooks.mjs) | guide / cli | pending: source changed since editorial review | pending: source changed since publication evidence |
 | public | [cli/lib/whoami.mjs](cli/lib/whoami.mjs) | guide / cli | pending | pending |
 | public | [cli/llms-cli-assets.txt](cli/llms-cli-assets.txt) | generated / mixed | pending: source changed since editorial review | pending: source changed since publication evidence |

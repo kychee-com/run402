@@ -152,7 +152,6 @@ const MATRIX = {
   deliveries: { shared: ["list", "get"], specific: [] },
   contacts: { shared: ["list", "add", "connect", "rm", "preferences", "test"], specific: [] },
   subscriptions: { shared: ["add", "list", "rm"], specific: [] },
-  "webhook-secret": { shared: ["rotate"], specific: [] },
   orgs: { shared: [], specific: ["create", "get", "rename", "list", "audit", "members", "invite"] },
   grants: { shared: [], specific: ["create", "list", "revoke", "revoke-key", "rotate-key"] },
   events: { shared: ["list"], specific: [] },

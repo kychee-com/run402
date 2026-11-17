@@ -87,7 +87,6 @@ DELIVER — reach a human when something happens
   deliveries     Did a notification actually land (list, get)
   contacts       Where a human is reachable — paging ladder + Telegram (list, add, connect, rm, preferences)
   subscriptions  Which events go where (add, list, rm)
-  webhook-secret Rotate your webhook signing secret
   email          Send template-based emails from your project
 
 PLATFORM — everything else, and the things still finding a home
@@ -477,11 +476,6 @@ switch (cmd) {
   }
   case "subscriptions": {
     const { run } = await import("./lib/subscriptions.mjs");
-    await run(sub, rest);
-    break;
-  }
-  case "webhook-secret": {
-    const { run } = await import("./lib/webhook-secret.mjs");
     await run(sub, rest);
     break;
   }

@@ -374,13 +374,45 @@ describe("one-passkey-per-person: session proofs ride beside the wallet proof", 
     assert.equal(hdr(calls[0]!.headers, "Authorization"), undefined);
   });
 
-  it("rotateWebhookSecret and rules.create accept the same proofs", async () => {
+  it("channels.rotateWebhookSecret and rules.create accept the same proofs", async () => {
     const { fetch, calls } = mockFetch(() => json({ ok: true }));
     const r = sdk(fetch);
-    await r.admin.rotateWebhookSecret({ siwx: "s", token: "t" });
+    await r.admin.channels.rotateWebhookSecret({ siwx: "s", token: "t" });
     await r.admin.rules.create({ telegramBindingId: "bnd_1" }, { siwx: "s", token: "t" });
     assert.equal(hdr(calls[0]!.headers, "Authorization"), "Bearer t");
     assert.equal(hdr(calls[1]!.headers, "Authorization"), "Bearer t");
+  });
+});
+
+describe("notification preferences belong to the recipient", () => {
+  it("get/set hit /agent/v1/notifications/preferences, with ?email= when one is named", async () => {
+    const { fetch, calls } = mockFetch(() => json({ recipient: "a@example.com", lifecycle_events: "all" }));
+    const r = sdk(fetch);
+    await r.admin.getNotificationPreferences();
+    await r.admin.setNotificationPreferences({ lifecycle_events: "off" }, { email: "a+b@example.com" });
+    assert.match(calls[0]!.url, /\/agent\/v1\/notifications\/preferences$/);
+    assert.equal(calls[1]!.method, "PATCH");
+    assert.match(calls[1]!.url, /\/agent\/v1\/notifications\/preferences\?email=a%2Bb%40example\.com$/);
+  });
+});
+
+describe("admin.channels webhook", () => {
+  it("get/set/remove/rotate address /agent/v1/notifications/channels/webhook", async () => {
+    const { fetch, calls } = mockFetch(() => json({ url: null, configured: false }));
+    const r = sdk(fetch);
+    await r.admin.channels.getWebhook();
+    await r.admin.channels.setWebhook("https://hooks.example/a");
+    await r.admin.channels.removeWebhook();
+    await r.admin.channels.rotateWebhookSecret();
+    assert.deepEqual(
+      calls.map((c) => `${c.method} ${new URL(c.url).pathname}`),
+      [
+        "GET /agent/v1/notifications/channels/webhook",
+        "POST /agent/v1/notifications/channels/webhook",
+        "DELETE /agent/v1/notifications/channels/webhook",
+        "POST /agent/v1/notifications/channels/webhook/rotate-secret",
+      ],
+    );
   });
 });
 

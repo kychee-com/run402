@@ -68,7 +68,6 @@ const GROUPED_COMMANDS = [
   "tier",
   "transfer",
   "wallets",
-  "webhook-secret",
 ];
 
 // Allowlist: file basenames whose `JSON.stringify({ status: ...` emissions

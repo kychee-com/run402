@@ -277,6 +277,7 @@ export const COMMAND_MANIFEST = [
   { path: ["contacts", "rm"], positionals: [p("contact_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["c_1"], runStyle: "sub" },
   { path: ["contacts", "test"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["contacts", "preferences"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
+  { path: ["contacts", "webhook"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["subscriptions", "add"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["subscriptions", "list"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [], runStyle: "sub" },
   { path: ["subscriptions", "rm"], positionals: [p("subscription_id")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["r_1"], runStyle: "sub" },
@@ -504,7 +505,7 @@ export const COMMAND_MANIFEST = [
   { path: ["contracts", "drain"], positionals: [p("signer_id")], projectScoped: true, legacyPositionalProject: true, minimalArgs: ["cwlt_gate1", "--to", "0x4444444444444444444444444444444444444444", "--confirm"] },
   { path: ["contracts", "delete"], positionals: [p("signer_id")], projectScoped: true, legacyPositionalProject: true, minimalArgs: ["cwlt_gate1", "--confirm"] },
 
-  // ── service / cache / doctor / notifications / webhook-secret / logs ─────
+  // ── service / cache / doctor / notifications / logs ─────
   { path: ["service", "status"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["service", "health"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   { path: ["cache", "inspect"], positionals: [p("url")], projectScoped: false, legacyPositionalProject: false, minimalArgs: ["https://example.com/"] },
@@ -514,7 +515,6 @@ export const COMMAND_MANIFEST = [
   // wallet/machine-wide, but the gate's contract is "accepts --project
   // without rejecting it," which this satisfies.
   { path: ["doctor"], positionals: [], projectScoped: true, legacyPositionalProject: false, minimalArgs: ["--no-scan"], runStyle: "merged" },
-  { path: ["webhook-secret", "rotate"], positionals: [], projectScoped: false, legacyPositionalProject: false, minimalArgs: [] },
   // `run402 logs [<function>] --request-id <request_id>`: the optional positional is
   // the function name (`run402 errors list` samples print it that way); it is
   // never a project id.

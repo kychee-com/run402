@@ -12087,25 +12087,46 @@
         "tags": [
           "Agent"
         ],
-        "summary": "Read operator notification preferences",
+        "summary": "Read your notification preferences",
         "operationId": "getNotificationPreferences",
+        "description": "Preferences belong to the verified email a notice is delivered to, not to a wallet. A SIWX wallet reads those of its verified contact email; a control-plane sign-in session reads those of its principal's verified email. The response names the recipient.",
         "security": [
           {
             "walletAuth": []
+          },
+          {
+            "controlPlaneSession": []
           }
         ],
         "parameters": [
           {
-            "$ref": "#/components/parameters/SiwxHeader"
+            "name": "email",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "A signed-in person with several verified emails names which one. Omitted: the oldest (a person) or the wallet's verified contact email (a wallet)."
           }
         ],
         "responses": {
           "200": {
-            "description": "Current preferences (or documented defaults if no contact row)",
+            "description": "The recipient's preferences (defaults when none are saved)",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotificationPreferences"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "RECIPIENT_EMAIL_NOT_HELD: the credential holds no verified recipient email, or not the one named. next_actions names how to verify one (POST /agent/v1/contact for a wallet, POST /agent/v1/control-plane/emails for a person).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -12116,17 +12137,27 @@
         "tags": [
           "Agent"
         ],
-        "summary": "Update operator notification preferences",
+        "summary": "Update your notification preferences",
         "operationId": "updateNotificationPreferences",
-        "description": "Cross-wallet effects require email_verified assurance. webhook_url changes require operator_passkey. security_events MUST remain 'always' (server returns 400 otherwise).",
+        "description": "Same recipient rules as GET. security_events MUST remain 'always'; unknown fields and webhook fields are refused (the webhook is POST /agent/v1/notifications/channels/webhook). A device-grade sign-in session is read-only (SESSION_READ_ONLY).",
         "security": [
           {
             "walletAuth": []
+          },
+          {
+            "controlPlaneSession": []
           }
         ],
         "parameters": [
           {
-            "$ref": "#/components/parameters/SiwxHeader"
+            "name": "email",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "A signed-in person with several verified emails names which one. Omitted: the oldest (a person) or the wallet's verified contact email (a wallet)."
           }
         ],
         "requestBody": {
@@ -12140,11 +12171,18 @@
           }
         },
         "responses": {
-          "303": {
-            "description": "See Other → /agent/v1/notifications/preferences (re-read updated prefs)"
+          "200": {
+            "description": "The updated preferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPreferences"
+                }
+              }
+            }
           },
           "400": {
-            "description": "Invalid enum value or attempt to silence a mandatory class",
+            "description": "Invalid value, unknown field, or an attempt to silence a mandatory class",
             "content": {
               "application/json": {
                 "schema": {
@@ -12154,7 +12192,7 @@
             }
           },
           "403": {
-            "description": "Required assurance level not met (email_verified for cross-wallet edits; operator_passkey for webhook_url changes)",
+            "description": "RECIPIENT_EMAIL_NOT_HELD: the credential holds no verified recipient email, or not the one named. next_actions names how to verify one (POST /agent/v1/contact for a wallet, POST /agent/v1/control-plane/emails for a person).",
             "content": {
               "application/json": {
                 "schema": {
@@ -13089,12 +13127,169 @@
         }
       }
     },
-    "/agent/v1/webhook-secret/rotate": {
+    "/agent/v1/notifications/channels/webhook": {
+      "get": {
+        "tags": [
+          "Agent"
+        ],
+        "summary": "Read the wallet's webhook channel",
+        "operationId": "getWebhookChannel",
+        "security": [
+          {
+            "walletAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SiwxHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Webhook state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookChannel"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "Agent"
         ],
-        "summary": "Rotate webhook signing secret",
+        "summary": "Set the wallet's webhook URL",
+        "operationId": "setWebhookChannel",
+        "description": "Requires operator_passkey assurance. The first URL mints the signing secret and returns it EXACTLY once as webhook_signing_secret; later calls keep the existing secret.",
+        "security": [
+          {
+            "walletAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SiwxHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "url"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "An absolute https URL"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook state, plus webhook_signing_secret when this call minted it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WebhookChannel"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "webhook_signing_secret": {
+                          "type": "string",
+                          "description": "Plaintext, present only when minted by this call; store immediately"
+                        },
+                        "note": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "url is missing or not an absolute https URL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CONTACT_PASSKEY_REQUIRED or STEP_UP_REQUIRED: operator_passkey assurance is needed (run402 login)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Agent"
+        ],
+        "summary": "Remove the wallet's webhook URL",
+        "operationId": "removeWebhookChannel",
+        "description": "Requires operator_passkey assurance.",
+        "security": [
+          {
+            "walletAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SiwxHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Webhook state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookChannel"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CONTACT_PASSKEY_REQUIRED or STEP_UP_REQUIRED: operator_passkey assurance is needed (run402 login)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/v1/notifications/channels/webhook/rotate-secret": {
+      "post": {
+        "tags": [
+          "Agent"
+        ],
+        "summary": "Rotate the webhook signing secret",
         "operationId": "rotateWebhookSecret",
         "description": "Generates a fresh HMAC signing secret. Returned EXACTLY once in webhook_signing_secret. Previous secret remains valid for 24 hours (dual-secret grace). Requires operator_passkey assurance.",
         "security": [
@@ -13136,17 +13331,7 @@
             }
           },
           "403": {
-            "description": "operator_passkey assurance required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Agent contact not found",
+            "description": "CONTACT_PASSKEY_REQUIRED or STEP_UP_REQUIRED: operator_passkey assurance is needed (run402 login)",
             "content": {
               "application/json": {
                 "schema": {
@@ -54305,25 +54490,14 @@
       },
       "NotificationPreferences": {
         "type": "object",
+        "required": [
+          "recipient"
+        ],
         "properties": {
-          "channels": {
-            "type": "object",
-            "properties": {
-              "email": {
-                "type": "boolean"
-              },
-              "webhook": {
-                "type": "boolean"
-              }
-            }
-          },
-          "webhook_url": {
+          "recipient": {
             "type": "string",
-            "nullable": true
-          },
-          "webhook_signing_secret_configured": {
-            "type": "boolean",
-            "description": "True if a secret exists. Plaintext is returned only by POST /agent/v1/webhook-secret/rotate, never read back."
+            "format": "email",
+            "description": "The verified email these preferences belong to"
           },
           "digest_cadence": {
             "type": "string",
@@ -54385,6 +54559,7 @@
       },
       "NotificationPreferencesPatch": {
         "type": "object",
+        "additionalProperties": false,
         "properties": {
           "digest_cadence": {
             "type": "string",
@@ -54421,15 +54596,45 @@
               "all"
             ]
           },
-          "webhook_url": {
+          "security_events": {
             "type": "string",
-            "nullable": true
+            "enum": [
+              "always"
+            ]
           },
           "locale": {
             "type": "string"
           },
           "timezone": {
             "type": "string"
+          }
+        }
+      },
+      "WebhookChannel": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "nullable": true
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "secret_configured": {
+            "type": "boolean",
+            "description": "True if a signing secret exists; its plaintext is never read back"
+          },
+          "disabled_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "disabled_reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "consecutive_failures": {
+            "type": "integer"
           }
         }
       },

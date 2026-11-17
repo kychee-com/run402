@@ -339,10 +339,6 @@
       "sha256": "5f6276979edb0ee33bb7a1066b5205b2f36577128a6245e9131c06bb78f5d3f9",
       "review": "reviewed server-first DX behavior: append-only contributions, shared result display, transport truth and automatic runtime-file exclusion; publication remains separate"
     },
-    "public:cli/lib/webhook-secret.mjs": {
-      "sha256": "44ca4011f1fed4a30cbe74a43501b0dfd9df44354317b355c4d4ac34b922bf90",
-      "review": "reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution"
-    },
     "public:cli/lib/webhooks.mjs": {
       "sha256": "addd1d7cde5efde42387d26d8d91062086823adcc7a7480b3e0e042a2a0e879b",
       "review": "reviewed CLI help surface: native command contract; manifest/help/output gates retained; no claim of live execution"

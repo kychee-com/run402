@@ -466,10 +466,6 @@
       "sha256": "1ad294e4026f2f7b594175633853d13b778593e1b3e6bcd88a96f04e4462a90d",
       "publication": "source published: 23751749; no separate hosted acceptance required"
     },
-    "public:cli/lib/webhook-secret.mjs": {
-      "sha256": "44ca4011f1fed4a30cbe74a43501b0dfd9df44354317b355c4d4ac34b922bf90",
-      "publication": "source published: 23751749; no separate hosted acceptance required"
-    },
     "public:cli/lib/webhooks.mjs": {
       "sha256": "addd1d7cde5efde42387d26d8d91062086823adcc7a7480b3e0e042a2a0e879b",
       "publication": "source published: 23751749; no separate hosted acceptance required"

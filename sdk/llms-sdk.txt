@@ -3250,12 +3250,21 @@ ReactivateProjectResult: { status, project_id, reactivated?: true, note? }      
 
 ### `r.admin.channels` + `r.admin.rules` (Telegram notification channel + routing rules)
 
-Self-serve Telegram push on top of the owner-notifications substrate: connect a chat, then add filter rules so ONLY matching events page that chat. Two sub-namespaces on `r.admin`, same shape as `r.admin.transfers`.
+Self-serve Telegram push on top of the owner-notifications substrate: connect a chat, then add filter rules so ONLY matching events page that chat. Two sub-namespaces on `r.admin`, same shape as `r.admin.transfers`. The wallet's webhook is a channel too (`setWebhook`, `removeWebhook` and `rotateWebhookSecret` need `operator_passkey` assurance).
+
+Notification preferences belong to the verified email a notice goes to, not to a wallet: a wallet reads and sets those of its verified contact email, a person signed in with `run402 login` those of their own verified email (`email` picks among several). The result names its `recipient`; a caller with no verified recipient email gets `403 RECIPIENT_EMAIL_NOT_HELD` with `next_actions`.
 
 ```
 r.admin.channels.connectTelegram(opts?: { label?: string }): Promise<ConnectTelegramResult>
 r.admin.channels.list(): Promise<NotificationChannelsResult>
 r.admin.channels.revokeTelegram(bindingId: string): Promise<RevokeTelegramResult>
+r.admin.channels.getWebhook(): Promise<WebhookChannel>
+r.admin.channels.setWebhook(url: string): Promise<SetWebhookResult>   // first URL mints the signing secret, returned once
+r.admin.channels.removeWebhook(): Promise<WebhookChannel>
+r.admin.channels.rotateWebhookSecret(): Promise<RotateWebhookSecretResult>
+
+r.admin.getNotificationPreferences(opts?: { email?: string }): Promise<NotificationPreferences>
+r.admin.setNotificationPreferences(patch: NotificationPreferencesPatch, opts?: { email?: string }): Promise<NotificationPreferences>
 
 r.admin.rules.list(): Promise<ListRoutingRulesResult>
 r.admin.rules.create(input: CreateRoutingRuleInput): Promise<CreateRoutingRuleResult>
