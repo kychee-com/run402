@@ -27003,7 +27003,7 @@
             }
           },
           "403": {
-            "description": "FORBIDDEN or lifecycle/authz error, or QUOTA_EXCEEDED when the capture would push the organization past its storage limit, or CAPTURE_SIZE_LIMIT_EXCEEDED when the project's table data is over the 128 MiB capture size limit (details carry `database_bytes`, `database_bytes_limit` and `database_limit`; nothing was paused or written; next action `shrink_database`).",
+            "description": "FORBIDDEN or lifecycle/authz error, or QUOTA_EXCEEDED when the capture would push the organization past its storage limit, or CAPTURE_SIZE_LIMIT_EXCEEDED when the project's table data is over the 128 MiB capture size limit (details carry `database_bytes`, `database_bytes_limit` and `database_limit`; nothing was paused or written; next action `shrink_database`), or SNAPSHOT_MANUAL_CAP_EXCEEDED when the project already holds 20 manual snapshots (details carry `cap`, `existing_count` and `oldest_snapshot_id`; next actions `delete_snapshot` on the oldest and `list_snapshots`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -27013,7 +27013,7 @@
             }
           },
           "409": {
-            "description": "Manual snapshot cap or consistency conflict.",
+            "description": "Consistency conflict.",
             "content": {
               "application/json": {
                 "schema": {
