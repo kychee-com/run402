@@ -12310,17 +12310,7 @@
             }
           },
           "403": {
-            "description": "operator_passkey assurance not met (FORBIDDEN) — `CONTACT_PASSKEY_REQUIRED` names `run402 login`; `STEP_UP_REQUIRED` names `--step-up` when the session's passkey proof is stale",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No agent contact registered for this wallet — register via POST /agent/v1/contact first (RESOURCE_NOT_FOUND)",
+            "description": "operator_passkey assurance not met — `CONTACT_PASSKEY_REQUIRED` names `run402 login`, or `POST /agent/v1/contact` when the wallet has no contact email yet; `STEP_UP_REQUIRED` names `--step-up` when the session's passkey proof is stale",
             "content": {
               "application/json": {
                 "schema": {
