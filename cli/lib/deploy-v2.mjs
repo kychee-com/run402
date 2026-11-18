@@ -1264,13 +1264,17 @@ async function deployCmd(args) {
   // level so any object whose own values are all empty containers is still
   // empty. `site.replace` is the exception: an empty one is a real deploy.
   const meaningful = ["database", "site", "functions", "secrets", "subdomains", "routes", "checks", "i18n", "assets"];
-  function hasContent(v) {
-    if (v == null) return false;
+  // A field set to null inside a section clears something (a role gate,
+  // `functions.patch.set.<name>.require_role: null`), so it is content, as the
+  // SDK counts it; a section that is itself null is not (`i18n` aside, below).
+  function hasContent(v, nested = false) {
+    if (v === undefined) return false;
+    if (v === null) return nested;
     if (Array.isArray(v)) return v.length > 0;
     if (typeof v === "object") {
       const keys = Object.keys(v);
       if (keys.length === 0) return false;
-      return keys.some((k) => hasContent(v[k]));
+      return keys.some((k) => hasContent(v[k], true));
     }
     if (typeof v === "string") return v.length > 0;
     return true;

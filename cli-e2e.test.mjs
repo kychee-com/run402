@@ -3137,6 +3137,30 @@ describe("CLI e2e happy path", () => {
     assert.equal(parsed.code, "MANIFEST_EMPTY");
   });
 
+  it("deploy accepts a source-less patch that only removes a role gate (require_role: null)", async () => {
+    const manifestPath = await writeDeployManifest("gate-removal.json", {
+      project_id: "prj_test123",
+      functions: { patch: { set: { gated: { require_role: null } } } },
+    });
+    const { threw, deployCalled, planBodies } = await deployApplyAndCapture(["--manifest", manifestPath]);
+    assert.ok(!threw || !/MANIFEST_EMPTY/.test(threw.message),
+      `a nested null is deploy content, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, true, "the gate removal must reach /apply/v1/plans");
+    const entry = planBodies[0]?.spec?.functions?.patch?.set?.gated;
+    // The plan wire spells it require_role, which the gateway reads back as requireRole.
+    assert.ok(entry && Object.prototype.hasOwnProperty.call(entry, "require_role") && entry.require_role === null,
+      `the plan carries require_role: null, got: ${JSON.stringify(entry)}`);
+  });
+
+  it("deploy still rejects a section that is itself null (GH-232)", async () => {
+    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+      ["--spec", JSON.stringify({ site: null }), "--project", "prj_test123"]);
+    assert.ok(threw && /process\.exit\(1\)/.test(threw.message),
+      `should exit non-zero, got: ${threw && threw.message}`);
+    assert.equal(deployCalled, false);
+    assert.equal(parseStderrEnvelope(stderr).code, "MANIFEST_EMPTY");
+  });
+
   it("deploy accepts an explicit empty site.replace: it takes the static files offline", async () => {
     const { threw, deployCalled } = await deployApplyAndCapture(
       ["--spec", JSON.stringify({ site: { replace: {} } }), "--project", "prj_test123"]);

@@ -2413,6 +2413,10 @@ export interface FunctionsDiff {
       | "deps"
       | "triggers"
       | "tools"
+      | "require_auth"
+      | "require_role"
+      | "class"
+      | "capabilities"
     >;
   }>;
 }

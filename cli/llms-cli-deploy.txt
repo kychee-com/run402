@@ -458,6 +458,7 @@ Function specs add auth gates:
 - `require_auth: true`: valid project user JWT required; 401 on anonymous; no DB lookup; independent from `require_role`.
 - `require_role: { table, id_column, role_column, allowed[], cache_ttl? } | null`: implies auth; gateway reads project-schema table with RLS bypass; 403 if role not in `allowed`; `null` removes gate in patch mode; `cache_ttl` default 60, max 600, 0 disables cache.
 - Passing gate injects `x-run402-user-id` (any gate) and `x-run402-user-role` (`require_role`) into request; read headers directly or use `auth.*`.
+- A gate stated alone (same code, or a source-less `functions.patch.set` entry such as `{ "gated": { "require_role": null } }`) is a change: the plan names the function under `functions.changed` with `require_auth` / `require_role` in `fields_changed`, and the commit applies it. A gate left out is kept. `class` and `capabilities` work the same way.
 - Validation: all `require_role` blocks in one release share `(table,id_column,role_column)`; schema-qualified identifiers rejected; `0 <= cache_ttl <= 600`; empty `allowed` rejected; missing table/column fails activation with `DEPLOY_INVALID_ROLE_GATE` (422) before live flip.
 
 Auth-gate fragment:

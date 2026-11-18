@@ -332,4 +332,6 @@ Validation rules (gateway-authoritative):
 
 The gate applies to both routed (`/your/route`) and direct (`POST /functions/v1/:name` with API key plus user JWT) invocation. Direct invocation still requires the API key at the edge; the gate runs after API-key auth, against the user JWT.
 
+A gate stated alone is a change: `{ "project_id": "prj_...", "functions": { "patch": { "set": { "delete-content": { "require_role": null } } } } }` (no source; the deployed code is kept) removes the gate, and the same source with a new `allowed` changes it. The plan names the function under `functions.changed` with `require_role` (or `require_auth`) in `fields_changed`, and the commit applies it. A gate left out of an entry is kept. `class` and `capabilities` work the same way.
+
 `up` returns the shared workflow envelope, including verification and backup outcomes. Its `result.app_result` display projection is marked `run402.up.summary`; `expand_result` retrieves the same execution’s redacted detail through the returned `result_ref`. SDK callers retain the complete typed `run402.up.result`.
