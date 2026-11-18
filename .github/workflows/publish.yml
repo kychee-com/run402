@@ -69,6 +69,8 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      # Read the Tests run on the released commit (the test gate below).
+      actions: read
 
     # Dispatch inputs reach shell steps through env, never by ${{ }}
     # interpolation into a script.
@@ -130,8 +132,49 @@ jobs:
         # the per-package core-dist / sdk/dist mirrors that prepack uses.
         run: npm run build
 
-      - name: Run full test suite
-        run: npm test
+      # The tests gate a release by their result on this commit, not by a
+      # second run of them. Every push to main runs test.yml (Tests) on the
+      # exact commit this job checked out, and covers more than one job here
+      # could: Node 22 and 24, Windows and macOS, lint and the
+      # production-dependency audit. A release dispatched right after the
+      # push waits for that run; anything but success refuses the release.
+      # Only a commit Tests never ran on (a push made with a workflow's own
+      # GITHUB_TOKEN, such as a release's version bump, starts no workflow)
+      # runs the suite here instead.
+      - name: Require the Tests run on this commit to have passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RUN_ID=""
+          for attempt in $(seq 1 90); do
+            RUN=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/test.yml/runs?head_sha=$GITHUB_SHA&event=push&per_page=1" \
+              --jq '.workflow_runs[0] // empty | "\(.id) \(.status) \(.conclusion // "none")"')
+            if [ -z "$RUN" ]; then
+              # A run appears seconds after its push; give it a minute.
+              if [ "$attempt" -ge 3 ]; then break; fi
+              sleep 20; continue
+            fi
+            read -r RUN_ID STATUS CONCLUSION <<< "$RUN"
+            if [ "$STATUS" = "completed" ]; then break; fi
+            echo "Tests run $RUN_ID on $GITHUB_SHA is $STATUS (check $attempt/90); waiting."
+            sleep 20
+          done
+          if [ -z "$RUN_ID" ]; then
+            echo "No Tests run exists for $GITHUB_SHA; running the suite here."
+            npm test
+            exit 0
+          fi
+          URL="https://github.com/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"
+          if [ "$STATUS" != "completed" ]; then
+            echo "::error::Tests run $URL on $GITHUB_SHA did not finish within 30 minutes. Dispatch the release again once it has."
+            exit 1
+          fi
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "::error::Tests run $URL on $GITHUB_SHA finished '$CONCLUSION'. Nothing was published. Fix main, or re-run a flaky job with 'gh run rerun $RUN_ID --failed -R $GITHUB_REPOSITORY', then dispatch the release again."
+            exit 1
+          fi
+          echo "Tests passed on $GITHUB_SHA: $URL"
 
       - name: Bump version (lockstep)
         id: bump
@@ -298,8 +341,10 @@ jobs:
       #   - skips when <name>@<version> already resolves, so a re-run after a
       #     partial publish completes the remaining packages and reaches a
       #     consistent lockstep version;
-      #   - after a claimed success, polls the registry (up to ~10 min) until
-      #     the exact version resolves; a lagging read never re-publishes;
+      #   - after a claimed success, polls the registry's per-version
+      #     document, which its CDN never caches, until the exact version
+      #     resolves (seconds; bounded at ~10 min); a lagging read never
+      #     re-publishes;
       #   - retries transient provenance/network errors (sigstore rekor TLOG
       #     timeouts, ECONNRESET) and empty/unrecognized failures a bounded
       #     number of times, re-checking the registry before each retry;

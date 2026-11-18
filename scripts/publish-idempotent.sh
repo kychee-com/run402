@@ -11,17 +11,25 @@
 #      idempotent skip (a re-run after a partial lockstep publish completes the
 #      remaining packages instead of failing on the one that already landed).
 #   2. After a claimed success, poll the registry until the exact version
-#      resolves. registry.npmjs.org can lag a good publish by minutes, so a
-#      lagging read waits; it never triggers a re-publish. Never appears -> fail.
+#      resolves. A lagging read waits; it never triggers a re-publish. Never
+#      appears -> fail.
 #   3. On a non-zero exit, re-check the registry first (may already exist).
 #      Known transient errors and empty/unrecognized output are retried a
 #      bounded number of times, re-checking the registry before each retry.
 #
+# "Ask the registry" reads the per-version document,
+# <registry>/<name>/<version>, which registry.npmjs.org serves from its origin
+# on every request (cf-cache-status: DYNAMIC), so it holds a version seconds
+# after the publish. `npm view` reads the whole packument instead, which the
+# CDN caches for max-age=300: polling through it waited out that cache, three
+# to five minutes per package after a publish that took seven seconds.
+#
 # Tunables (env, mainly for tests):
+#   PUBLISH_REGISTRY_URL        registry origin             (default https://registry.npmjs.org)
 #   PUBLISH_MAX_ATTEMPTS        publish attempts            (default 3)
 #   PUBLISH_RETRY_SLEEP_S       sleep between attempts      (default 10)
 #   PUBLISH_VERIFY_TIMEOUT_S    post-success verify window  (default 600)
-#   PUBLISH_VERIFY_INTERVAL_S   registry poll interval      (default 15)
+#   PUBLISH_VERIFY_INTERVAL_S   registry poll interval      (default 5)
 #   PUBLISH_FINAL_CHECK_S       last registry window after retries are
 #                               exhausted                   (default 120)
 
@@ -33,8 +41,9 @@ dir="${2:?usage: publish-idempotent.sh <label> <package-dir>}"
 max_attempts="${PUBLISH_MAX_ATTEMPTS:-3}"
 retry_sleep="${PUBLISH_RETRY_SLEEP_S:-10}"
 verify_timeout="${PUBLISH_VERIFY_TIMEOUT_S:-600}"
-verify_interval="${PUBLISH_VERIFY_INTERVAL_S:-15}"
+verify_interval="${PUBLISH_VERIFY_INTERVAL_S:-5}"
 final_check="${PUBLISH_FINAL_CHECK_S:-120}"
+registry="${PUBLISH_REGISTRY_URL:-https://registry.npmjs.org}"
 
 cd "$dir" || { echo "[$label] cannot cd into $dir"; exit 1; }
 
@@ -42,11 +51,15 @@ pkg=$(node -p "require('./package.json').name") || { echo "[$label] cannot read 
 version=$(node -p "require('./package.json').version") || { echo "[$label] cannot read package version"; exit 1; }
 spec="$pkg@$version"
 
-# True when the registry resolves the exact version. --prefer-online bypasses
-# npm's local metadata cache so a poll sees fresh registry state.
+doc_url="$registry/$pkg/$version"
+
+# True when the registry's per-version document carries the exact version. A
+# 404 (not published), a network failure or a body that is not JSON all read
+# as "not there yet".
 is_published() {
   local got
-  got=$(npm view "$spec" version --prefer-online 2>/dev/null | tr -d '[:space:]')
+  got=$(curl -fsS --max-time 20 "$doc_url" 2>/dev/null \
+    | node -e 'let s="";process.stdin.on("data",(d)=>{s+=d}).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).version||""))}catch{}})')
   [ "$got" = "$version" ]
 }
 
