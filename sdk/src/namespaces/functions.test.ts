@@ -65,9 +65,8 @@ function json(body: unknown, status = 200): Response {
  * A `mockFetch` handler that drives the unified-apply engine to terminal
  * success for a single `functions.patch.set` deploy: `missing_content: []`
  * (so the CAS upload dance is skipped) + a terminal `"ready"` commit (so the
- * operation poll is skipped). `/tiers/v1/status` returns an empty tier so the
- * function tier preflight bails (no extra endpoints to mock). The `functions`
- * deploy re-point rides this path instead of the deleted legacy admin route.
+ * operation poll is skipped). The `functions` deploy re-point rides this path
+ * instead of the deleted legacy admin route.
  */
 function applyOkFetch(opts: { planId: string; warnings?: unknown[]; lists?: unknown[][] }) {
   const { planId, warnings = [] } = opts;
@@ -76,7 +75,6 @@ function applyOkFetch(opts: { planId: string; warnings?: unknown[]; lists?: unkn
   const lists = opts.lists ?? [[]];
   let listCalls = 0;
   return mockFetch((call) => {
-    if (call.url.endsWith("/tiers/v1/status")) return json({ tier: "" });
     if (call.method === "GET" && call.url.endsWith("/projects/v1/admin/prj_known/functions")) {
       const functions = lists[Math.min(listCalls, lists.length - 1)];
       listCalls++;

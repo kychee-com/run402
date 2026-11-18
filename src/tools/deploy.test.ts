@@ -312,6 +312,37 @@ describe("handleDeploy deploy error formatting", () => {
     assert.deepEqual(e.next_actions.map((a) => a.type), ["edit_migration", "resume_deploy"]);
   });
 
+  it("passes the gateway's tier refusal through with its fix and next actions", async () => {
+    const fix = { tier: "team", max_function_timeout_sec: 60, got_timeout_sec: 120 };
+    const nextActions = [{
+      type: "edit_request",
+      why: 'Set functions.api.config.timeoutSeconds to at most 60, or declare class "run" (up to 300s) if the function is reached only through function runs.',
+    }];
+    const message = 'timeoutSeconds 120 exceeds your team tier limit of 60s. Lower the timeout. A function that only serves function runs (class "run") may take up to 300s.';
+    nextApplyImpl = async () => {
+      throw new Run402DeployError(message, {
+        code: "TIER_LIMIT_EXCEEDED",
+        phase: "validate",
+        resource: "functions.api.config.timeoutSeconds",
+        retryable: false,
+        status: 403,
+        fix,
+        body: { code: "TIER_LIMIT_EXCEEDED", message, fix, next_actions: nextActions },
+        context: "plan",
+      });
+    };
+    const result = await handleDeploy({ project_id: "prj_xxx", site: { replace: { "index.html": "<h1>x</h1>" } as never } as never });
+    assert.equal(result.isError, true);
+    const structured = deployOutputSchema.parse(result.structuredContent);
+    const e = toolErrorSchema.parse(structured.error);
+    assert.equal(e.code, "TIER_LIMIT_EXCEEDED");
+    assert.equal(e.message, message);
+    assert.equal(e.http_status, 403);
+    assert.equal(e.resource, "functions.api.config.timeoutSeconds");
+    assert.deepEqual(e.fix, fix);
+    assert.deepEqual(e.next_actions, nextActions);
+  });
+
   it("reports an uncovered payment as an error, as run does", async () => {
     nextApplyImpl = async () => {
       throw new PaymentRequired("Payment required", 402, {

@@ -19,7 +19,7 @@ order: 50
 | Secrets | 10 | 50 | 200 |
 | Scheduled fns | 1 / 15min | 3 / 5min | 10 / 1min |
 
-Deploy preflights literal unified-deploy timeout, memory, cron interval, and scheduled-count values before plan/upload when caps are known; failures are structured `BAD_FIELD` errors with field/value/tier/limit details.
+The plan checks function timeout, memory, schedule interval and scheduled-trigger count (pooled across the organization's projects) before anything is uploaded; a value above its cap is refused `TIER_LIMIT_EXCEEDED` (403), and the `deploy` tool's error carries the gateway's `fix` (the cap that applied) and `next_actions` (the edit) unchanged.
 
 Project rate limit: 100 req/sec. Exceeding returns 429 with `retry_after`. Each project runs in its own Postgres schema; cross-schema access is blocked.
 

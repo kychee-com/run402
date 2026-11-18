@@ -2914,7 +2914,7 @@ describe("agent deploy-friction docs stay visible", () => {
         [/cli\.update_available/, "CLI stale-version update notice"],
         [/doctor --refresh/, "CLI live update check"],
         [/Function authoring limits by tier/, "tier function caps"],
-        [/BAD_FIELD/, "structured tier preflight errors"],
+        [/TIER_LIMIT_EXCEEDED/, "the gateway's tier refusal"],
         [/ai\.generateImage/, "runtime image helper"],
       ],
     },
@@ -2927,8 +2927,7 @@ describe("agent deploy-friction docs stay visible", () => {
         [/allowWarningCodes/, "SDK warning-code acknowledgement"],
         [/Run402-Client/, "SDK client metadata header"],
         [/WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS/, "read-only wildcard route acknowledgement via allowWarningCodes"],
-        [/function_limits/, "tier status function caps"],
-        [/BAD_FIELD/, "structured tier preflight errors"],
+        [/TIER_LIMIT_EXCEEDED/, "the gateway's tier refusal"],
         [/ai\.generateImage/, "runtime image helper"],
       ],
     },
@@ -2956,7 +2955,7 @@ describe("agent deploy-friction docs stay visible", () => {
         [/--allow-warning/, "OpenClaw warning-code acknowledgement"],
         [/--final-only/, "OpenClaw final-only output"],
         [/WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS/, "OpenClaw read-only wildcard route acknowledgement via --allow-warning"],
-        [/BAD_FIELD/, "tier preflight structured error"],
+        [/TIER_LIMIT_EXCEEDED/, "the gateway's tier refusal"],
         [/ai\.generateImage/, "runtime image helper"],
       ],
     },
@@ -2965,7 +2964,7 @@ describe("agent deploy-friction docs stay visible", () => {
       patterns: [
         [/allowWarningCodes/, "SDK README warning-code acknowledgement"],
         [/Run402-Client/, "SDK README client metadata header"],
-        [/BAD_FIELD/, "SDK README tier preflight error"],
+        [/TIER_LIMIT_EXCEEDED/, "SDK README gateway tier refusal"],
         [/activation_pending/, "SDK README activation failure classifier"],
       ],
     },
@@ -2994,16 +2993,13 @@ describe("agent deploy-friction docs stay visible", () => {
     assert.match(deployTypes, /allowWarningCodes/, "ApplyOptions must expose allowWarningCodes");
     assert.doesNotMatch(deployTypes, /acknowledge_readonly/, "RouteSpec must not expose the removed acknowledge_readonly field");
 
+    // Tier limits are the gateway's answer (vision principle 13): the SDK
+    // holds no copy of a tier cap, reads no tier before a plan, and types no
+    // tier-status slot the gateway never sends.
     const tierTypes = readFileSync(join(__dirname, "sdk/src/namespaces/tier.ts"), "utf-8");
-    for (const field of [
-      "max_function_timeout_seconds",
-      "max_function_memory_mb",
-      "max_scheduled_functions",
-      "min_cron_interval_minutes",
-      "current_scheduled_functions",
-    ]) {
-      assert.match(tierTypes, new RegExp(field), `tier status type must expose ${field}`);
-    }
+    assert.doesNotMatch(tierTypes, /function_limits|TierFunctionLimits/, "tier status type must not describe function caps the gateway never returns");
+    const deploySource = readFileSync(join(__dirname, "sdk/src/namespaces/deploy.ts"), "utf-8");
+    assert.doesNotMatch(deploySource, /\/tiers\/v1\/status|local_static_fallback|tier_max/, "deploy must not check tier caps locally");
   });
 });
 

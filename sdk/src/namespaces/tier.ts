@@ -9,15 +9,6 @@ import type { MeteringBlock } from "./billing.js";
 
 export type TierName = "prototype" | "hobby" | "team";
 
-export interface TierFunctionLimits {
-  max_function_timeout_seconds?: number;
-  max_function_memory_mb?: number;
-  max_scheduled_functions?: number;
-  min_cron_interval_minutes?: number;
-  current_scheduled_functions?: number;
-  [key: string]: unknown;
-}
-
 /**
  * Per-project summary returned in `TierStatusResult.projects[]`. Mirrors the
  * gateway's `WalletTierInfo.projects[]` shape. Pre-v1.57 gateways may omit
@@ -152,14 +143,6 @@ export interface TierStatusResult {
    * without a second list call.
    */
   incoming_transfers?: TierStatusIncomingTransfer[];
-  /** Function authoring caps returned by newer gateways. Unknown future
-   *  limit fields are preserved so callers can display or branch on them. */
-  function_limits?: TierFunctionLimits;
-  /** Compatibility slot for gateways that nest caps under limits.functions. */
-  limits?: {
-    functions?: TierFunctionLimits;
-    [key: string]: unknown;
-  };
   /**
    * Org-level advisories (recovery-event-reachability). Present only when at
    * least one applies; absent on older gateways. `owner_unreachable`

@@ -204,9 +204,6 @@ The catalog records owning source locations and pinned external contributions. A
 <a id="BAD_ENV"></a>
 [`BAD_ENV`](/errors/client/#BAD_ENV)
 
-<a id="BAD_FIELD"></a>
-[`BAD_FIELD`](/errors/client/#BAD_FIELD)
-
 <a id="BAD_FILE"></a>
 [`BAD_FILE`](/errors/client/#BAD_FILE)
 

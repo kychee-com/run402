@@ -177,7 +177,7 @@ The deploy result still includes an optional top-level `warnings: string[]` (sib
 | Max scheduled triggers | 1 | 3 | 10 |
 | Min interval | 15 min | 5 min | 1 min |
 
-`run402 deploy` preflights literal unified-deploy function specs against these caps before plan/upload when the values are known. Gateway validation remains authoritative; `run402 tier status` includes live function caps and current scheduled usage when returned.
+The plan checks these caps before anything is uploaded and refuses a value above one with `TIER_LIMIT_EXCEEDED` (403): `fix` names the cap that applied and `next_actions` the edit. Scheduled triggers count across the organization's projects, and a deploy that adds none is never refused over the count.
 
 Secrets available as `process.env` (see secrets below).
 

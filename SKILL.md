@@ -1105,7 +1105,7 @@ The server auto-detects the action: no tier or expired → start; same tier acti
 | Secrets | 10 | 50 | 200 |
 | Scheduled fns | 1 / 15min | 3 / 5min | 10 / 1min |
 
-`run402 deploy` preflights literal unified-deploy timeout, memory, cron interval, and scheduled-count values before plan/upload when caps are known; failures are structured `BAD_FIELD` errors. `run402 tier status` shows live function caps and current scheduled usage when returned.
+The plan checks function timeout, memory, schedule interval and scheduled-trigger count (pooled across the organization's projects) before anything is uploaded; a value above its cap is refused `TIER_LIMIT_EXCEEDED` (403), with `fix` naming the cap and `next_actions` the edit, and `run402 deploy` prints it as the gateway sent it.
 
 Project-level rate limit: 100 req/sec. Exceeding returns 429 with `retry_after`. Each project has its own Postgres schema; cross-schema access is blocked.
 

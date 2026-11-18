@@ -2944,7 +2944,7 @@ describe("CLI e2e happy path", () => {
   // ── GH-232: deploy (v2 unified primitive) must reject empty specs ──
   // `deploy --manifest` / `--spec` must not silently send empty specs
   // to the gateway.
-  async function deployApplyAndCapture(args) {
+  async function deployApplyAndCapture(args, opts = {}) {
     const { run } = await import("./cli/lib/deploy.mjs");
     const { saveWallet } = await import("./cli/lib/config.mjs");
     saveWallet({
@@ -2956,16 +2956,19 @@ describe("CLI e2e happy path", () => {
     });
     let deployCalled = false;
     const planBodies = [];
+    const requests = [];
     const prevFetch = globalThis.fetch;
     globalThis.fetch = async (input, init) => {
       const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
       const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      requests.push(`${method} ${new URL(url).pathname}`);
       if (url.endsWith("/apply/v1/plans") && method === "POST") {
         deployCalled = true;
         const rawBody = init?.body ?? (input instanceof Request ? await input.clone().text() : null);
         if (typeof rawBody === "string") {
           try { planBodies.push(JSON.parse(rawBody)); } catch { planBodies.push(rawBody); }
         }
+        if (opts.planResponse) return opts.planResponse();
       }
       return prevFetch(input, init);
     };
@@ -2979,7 +2982,7 @@ describe("CLI e2e happy path", () => {
       captureStop();
       globalThis.fetch = prevFetch;
     }
-    return { threw, stderr: capturedStderr(), stdout: capturedStdout(), deployCalled, planBodies };
+    return { threw, stderr: capturedStderr(), stdout: capturedStdout(), deployCalled, planBodies, requests };
   }
 
   function nonEmptyDeploySpec() {
@@ -3188,108 +3191,49 @@ describe("CLI e2e happy path", () => {
     });
   });
 
-  it("deploy rejects function timeout tier violations before planning", async () => {
-    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
+  it("deploy prints the gateway's tier refusal unchanged and checks no cap of its own", async () => {
+    // tier-quota-pool "The gateway alone judges a deploy's function tier
+    // limits": the CLI sends the plan and renders the refusal as received.
+    const refusal = {
+      code: "TIER_LIMIT_EXCEEDED",
+      phase: "validate",
+      resource: "functions.api.config.timeoutSeconds",
+      message: 'timeoutSeconds 120 exceeds your team tier limit of 60s. Lower the timeout. A function that only serves function runs (class "run") may take up to 300s.',
+      retryable: false,
+      operation_id: "op_pending",
+      fix: { tier: "team", max_function_timeout_sec: 60, got_timeout_sec: 120 },
+      next_actions: [{
+        type: "edit_request",
+        why: 'Set functions.api.config.timeoutSeconds to at most 60, or declare class "run" (up to 300s) if the function is reached only through function runs.',
+      }],
+    };
+    const { threw, stderr, deployCalled, requests } = await deployApplyAndCapture(
       ["--spec", JSON.stringify({
         functions: {
           replace: {
             api: {
               source: { data: "export default { fetch() { return new Response('ok') } };" },
-              config: { timeout_seconds: 20 },
+              class: "standard",
+              config: { timeout_seconds: 120 },
             },
           },
         },
       }), "--project", "prj_test123"],
+      { planResponse: () => new Response(JSON.stringify(refusal), { status: 403, headers: { "content-type": "application/json" } }) },
     );
 
     assert.ok(threw && /process\.exit\(1\)/.test(threw.message));
-    assert.equal(deployCalled, false, "timeout cap must fail before /apply/v1/plans");
-    const parsed = parseStderrEnvelope(stderr);
-    assert.equal(parsed.code, "BAD_FIELD");
-    assert.equal(parsed.details.field, "functions.api.config.timeoutSeconds");
-    assert.equal(parsed.details.value, 20);
-    assert.equal(parsed.details.tier, "prototype");
-    assert.equal(parsed.details.tier_max, 10);
-    assert.equal(parsed.details.limit_source, "local_static_fallback");
-  });
-
-  it("deploy rejects function memory tier violations before planning", async () => {
-    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
-      ["--spec", JSON.stringify({
-        functions: {
-          replace: {
-            api: {
-              source: { data: "export default { fetch() { return new Response('ok') } };" },
-              config: { memory_mb: 256 },
-            },
-          },
-        },
-      }), "--project", "prj_test123"],
+    assert.equal(deployCalled, true, "the gateway judges the timeout");
+    assert.deepEqual(
+      requests.filter((r) => /\/tiers\/v1\/status|GET \/projects\/v1\//.test(r)),
+      [],
+      "no tier read before the plan",
     );
-
-    assert.ok(threw && /process\.exit\(1\)/.test(threw.message));
-    assert.equal(deployCalled, false, "memory cap must fail before /apply/v1/plans");
     const parsed = parseStderrEnvelope(stderr);
-    assert.equal(parsed.code, "BAD_FIELD");
-    assert.equal(parsed.details.field, "functions.api.config.memoryMb");
-    assert.equal(parsed.details.value, 256);
-    assert.equal(parsed.details.tier_max, 128);
-    assert.equal(parsed.details.limit_source, "local_static_fallback");
-  });
-
-  it("deploy rejects too-frequent scheduled functions before planning", async () => {
-    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
-      ["--spec", JSON.stringify({
-        functions: {
-          replace: {
-            digest: {
-              source: { data: "export default { scheduled() {} };" },
-              triggers: [{ type: "schedule", cron: "*/5 * * * *" }],
-            },
-          },
-        },
-      }), "--project", "prj_test123"],
-    );
-
-    assert.ok(threw && /process\.exit\(1\)/.test(threw.message));
-    assert.equal(deployCalled, false, "schedule interval cap must fail before /apply/v1/plans");
-    const parsed = parseStderrEnvelope(stderr);
-    assert.equal(parsed.code, "BAD_FIELD");
-    assert.equal(parsed.details.field, "functions.digest.triggers[0].cron");
-    assert.equal(parsed.details.value, "*/5 * * * *");
-    assert.equal(parsed.details.interval_minutes, 5);
-    assert.equal(parsed.details.min_interval_minutes, 15);
-    assert.equal(parsed.details.limit_source, "local_static_fallback");
-  });
-
-  it("deploy rejects scheduled function count tier violations before planning", async () => {
-    const { threw, stderr, deployCalled } = await deployApplyAndCapture(
-      ["--spec", JSON.stringify({
-        functions: {
-          replace: {
-            first: {
-              source: { data: "export default { scheduled() {} };" },
-              triggers: [{ type: "schedule", cron: "0 * * * *" }],
-            },
-            second: {
-              source: { data: "export default { scheduled() {} };" },
-              triggers: [{ type: "schedule", cron: "30 * * * *" }],
-            },
-          },
-        },
-      }), "--project", "prj_test123"],
-    );
-
-    assert.ok(threw && /process\.exit\(1\)/.test(threw.message));
-    assert.equal(deployCalled, false, "scheduled count cap must fail before /apply/v1/plans");
-    const parsed = parseStderrEnvelope(stderr);
-    assert.equal(parsed.code, "BAD_FIELD");
-    assert.equal(parsed.details.field, "functions.scheduled_count");
-    assert.equal(parsed.details.value, 2);
-    assert.equal(parsed.details.tier_max, 1);
-    assert.equal(parsed.details.max_scheduled_functions, 1);
-    assert.equal(parsed.details.count_source, "manifest");
-    assert.equal(parsed.details.limit_source, "local_static_fallback");
+    assert.equal(parsed.code, "TIER_LIMIT_EXCEEDED");
+    assert.equal(parsed.message, refusal.message);
+    assert.deepEqual(parsed.fix, refusal.fix);
+    assert.deepEqual(parsed.next_actions, refusal.next_actions);
   });
 
   it("deploy --allow-warning acknowledges a specific client route warning", async () => {

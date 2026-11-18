@@ -248,10 +248,6 @@ See [error contracts and recovery](/errors/). Fields are surface-specific.
 <a id="BAD_ENV"></a>
 [`BAD_ENV`](/errors/client/#BAD_ENV)
 
-<a id="bad_field"></a>
-<a id="BAD_FIELD"></a>
-[`BAD_FIELD`](/errors/client/#BAD_FIELD)
-
 <a id="bad_file"></a>
 <a id="BAD_FILE"></a>
 [`BAD_FILE`](/errors/client/#BAD_FILE)

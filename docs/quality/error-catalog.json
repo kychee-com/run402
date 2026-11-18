@@ -637,16 +637,6 @@
       "topic": "/errors/client/#BAD_ENV"
     },
     {
-      "code": "BAD_FIELD",
-      "owners": [
-        {
-          "owner": "public",
-          "source": "sdk/src/namespaces/deploy.ts"
-        }
-      ],
-      "topic": "/errors/client/#BAD_FIELD"
-    },
-    {
       "code": "BAD_FILE",
       "owners": [
         {

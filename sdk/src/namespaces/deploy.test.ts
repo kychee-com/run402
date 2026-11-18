@@ -1072,16 +1072,6 @@ describe("Deploy.apply (happy path)", () => {
     const w = makeWiring();
     const fnSha = "a".repeat(64);
     w.setHandler((req) => {
-      if (req.path === "/tiers/v1/status") {
-        return {
-          tier: "prototype",
-          active: true,
-          function_limits: {
-            max_scheduled_functions: 1,
-            min_cron_interval_minutes: 15,
-          },
-        };
-      }
       if (req.path === "/content/v1/plans") {
         return {
           plan_id: "cplan_triggers",
@@ -1760,227 +1750,63 @@ describe("Deploy.apply (deploy commit lost to a transient failure)", () => {
   });
 });
 
-describe("Deploy.apply (tier function preflight)", () => {
-  it("rejects timeout caps before deploy planning with structured BAD_FIELD details", async () => {
+describe("Deploy.apply (tier limits are the gateway's answer)", () => {
+  // tier-quota-pool "The gateway alone judges a deploy's function tier
+  // limits": the SDK holds no cap and reads no tier; the plan's refusal
+  // reaches the caller with its code, fix and next actions.
+  const refusal = {
+    code: "TIER_LIMIT_EXCEEDED",
+    phase: "validate",
+    resource: "functions.api.config.timeoutSeconds",
+    message: 'timeoutSeconds 120 exceeds your team tier limit of 60s. Lower the timeout. A function that only serves function runs (class "run") may take up to 300s.',
+    retryable: false,
+    operation_id: "op_pending",
+    fix: { tier: "team", max_function_timeout_sec: 60, got_timeout_sec: 120 },
+    next_actions: [
+      {
+        type: "edit_request",
+        why: 'Set functions.api.config.timeoutSeconds to at most 60, or declare class "run" (up to 300s) if the function is reached only through function runs.',
+      },
+    ],
+  };
+
+  it("sends the plan first and throws the gateway's TIER_LIMIT_EXCEEDED unchanged", async () => {
     const w = makeWiring();
     w.setHandler((req) => {
-      if (req.path === "/tiers/v1/status") {
-        return {
-          wallet: "0xtest",
-          tier: "prototype",
-          lease_started_at: "2026-05-01T00:00:00.000Z",
-          lease_expires_at: "2026-05-08T00:00:00.000Z",
-          active: true,
-          pool_usage: {
-            projects: 1,
-            total_api_calls: 0,
-            total_storage_bytes: 0,
-            api_calls_limit: 500_000,
-            storage_bytes_limit: 1_073_741_824,
-          },
-          function_limits: {
-            max_function_timeout_seconds: 10,
-            max_function_memory_mb: 128,
-            max_scheduled_functions: 1,
-            min_cron_interval_minutes: 15,
-          },
-        };
+      if (req.path === "/apply/v1/plans") {
+        throw new ApiError("Forbidden", 403, refusal, "planning deploy");
       }
-      throw new Error(`unexpected ${req.path}`);
+      throw new Error(`unexpected ${req.method ?? "GET"} ${req.path}`);
     });
 
-    const deploy = new Deploy(w.client);
     await assert.rejects(
       () =>
-        deploy.apply({
+        new Deploy(w.client).apply({
           project_id: "prj_test",
           functions: {
             replace: {
               api: {
                 source: "export default { fetch() { return new Response('ok') } };",
-                config: { timeoutSeconds: 20 },
+                class: "standard",
+                config: { timeoutSeconds: 120 },
               },
             },
           },
         }),
       (err: unknown) => {
         assert(err instanceof Run402DeployError);
-        assert.equal(err.code, "BAD_FIELD");
-        assert.equal(err.status, null);
-        assert.equal(err.phase, "validate");
+        assert.equal(err.code, "TIER_LIMIT_EXCEEDED");
+        assert.equal(err.status, 403);
         assert.equal(err.resource, "functions.api.config.timeoutSeconds");
-        assert.deepEqual(err.details, {
-          field: "functions.api.config.timeoutSeconds",
-          value: 20,
-          tier: "prototype",
-          limit_source: "tier_status",
-          tier_max: 10,
-          max_function_timeout_seconds: 10,
-        });
+        assert.match(err.message, /class "run"\) may take up to 300s/);
+        assert.deepEqual(err.fix, refusal.fix);
+        assert.deepEqual(err.nextActions, refusal.next_actions);
         return true;
       },
     );
 
-    assert.equal(countRequests(w, "/tiers/v1/status"), 1);
-    assert.equal(countRequests(w, "/apply/v1/plans"), 0);
-    assert.equal(w.puts.length, 0);
-  });
-});
-
-describe("Deploy.apply (SSR function memory preflight)", () => {
-  function teamWiring() {
-    const w = makeWiring();
-    w.setHandler((req) => {
-      if (req.path === "/tiers/v1/status") {
-        return { wallet: "0xtest", tier: "team", active: true };
-      }
-      // Reaching planning proves the preflight passed.
-      throw new Error("PLANNED");
-    });
-    return w;
-  }
-  const fnWith = (cls: "ssr" | "standard" | undefined, memoryMb: number) => ({
-    project_id: "prj_test",
-    functions: {
-      replace: {
-        ssr: {
-          source: "export default { fetch() { return new Response('ok') } };",
-          ...(cls ? { class: cls } : {}),
-          config: { memoryMb },
-        },
-      },
-    },
-  });
-  const tierMax = (spec: ReturnType<typeof fnWith>) => async () => {
-    const err = await new Deploy(teamWiring().client).apply(spec).then(() => null, (e: unknown) => e);
-    if (err instanceof Run402DeployError && err.code === "BAD_FIELD") return (err.details as { tier_max: number }).tier_max;
-    assert.match(String((err as Error)?.message), /PLANNED/);
-    return null;
-  };
-
-  it("lets an SSR function use the SSR cap and holds a standard function to the ordinary cap", async () => {
-    assert.equal(await tierMax(fnWith("ssr", 1769))(), null);
-    assert.equal(await tierMax(fnWith("ssr", 2048))(), 1769);
-    assert.equal(await tierMax(fnWith("standard", 1024))(), 512);
-  });
-
-  it("leaves a function that declares no class to the gateway up to the SSR cap", async () => {
-    assert.equal(await tierMax(fnWith(undefined, 1024))(), null);
-    assert.equal(await tierMax(fnWith(undefined, 2048))(), 1769);
-  });
-});
-
-describe("Deploy.apply (run function timeout preflight)", () => {
-  function teamWiring() {
-    const w = makeWiring();
-    w.setHandler((req) => {
-      if (req.path === "/tiers/v1/status") {
-        return { wallet: "0xtest", tier: "team", active: true };
-      }
-      // Reaching planning proves the preflight passed.
-      throw new Error("PLANNED");
-    });
-    return w;
-  }
-  const fnWith = (cls: "run" | "standard" | undefined, timeoutSeconds: number) => ({
-    project_id: "prj_test",
-    functions: {
-      replace: {
-        turn: {
-          source: "export default async () => new Response('ok');",
-          ...(cls ? { class: cls } : {}),
-          config: { timeoutSeconds },
-        },
-      },
-    },
-  });
-  const tierMax = (spec: ReturnType<typeof fnWith>) => async () => {
-    const err = await new Deploy(teamWiring().client).apply(spec).then(() => null, (e: unknown) => e);
-    if (err instanceof Run402DeployError && err.code === "BAD_FIELD") return (err.details as { tier_max: number }).tier_max;
-    assert.match(String((err as Error)?.message), /PLANNED/);
-    return null;
-  };
-
-  it("lets a run function take five minutes on team and holds a standard function to 60 s", async () => {
-    assert.equal(await tierMax(fnWith("run", 300))(), null);
-    assert.equal(await tierMax(fnWith("run", 301))(), 300);
-    assert.equal(await tierMax(fnWith("standard", 120))(), 60);
-  });
-
-  it("leaves a function that declares no class to the gateway up to the run cap", async () => {
-    assert.equal(await tierMax(fnWith(undefined, 120))(), null);
-    assert.equal(await tierMax(fnWith(undefined, 301))(), 300);
-  });
-});
-
-describe("Deploy.apply (preflight reads the project's org tier)", () => {
-  function wiring(walletTier: string, projectTier: string | null) {
-    const w = makeWiring();
-    w.setHandler((req) => {
-      if (req.path === "/tiers/v1/status") {
-        return { wallet: "0xtest", tier: walletTier, active: true };
-      }
-      if (req.path === "/projects/v1/prj_test") {
-        if (projectTier === null) throw new ApiError("forbidden", 403, { code: "FORBIDDEN" }, "getting project");
-        return { project_id: "prj_test", org_id: "org_other", tier: projectTier };
-      }
-      throw new Error("PLANNED");
-    });
-    return w;
-  }
-  const ssr1024 = {
-    project_id: "prj_test",
-    functions: {
-      replace: {
-        ssr: {
-          source: "export default { fetch() { return new Response('ok') } };",
-          class: "ssr" as const,
-          config: { memoryMb: 1024 },
-        },
-      },
-    },
-  };
-  const outcome = async (w: ReturnType<typeof makeWiring>) =>
-    new Deploy(w.client).apply(ssr1024).then(() => "planned", (err: unknown) => {
-      if (err instanceof Run402DeployError && err.code === "BAD_FIELD") {
-        return { ...(err.details as { tier: string; tier_max: number }), hint: (err.body as { hint?: string }).hint ?? "" };
-      }
-      assert.match(String((err as Error)?.message), /PLANNED/);
-      return "planned";
-    });
-
-  it("lets a prototype wallet deploy within a team project's caps", async () => {
-    assert.equal(await outcome(wiring("prototype", "team")), "planned");
-  });
-
-  it("holds a team wallet's deploy into a prototype project to prototype's caps", async () => {
-    const result = await outcome(wiring("team", "prototype"));
-    assert.deepEqual(
-      typeof result === "string" ? result : { tier: result.tier, tier_max: result.tier_max },
-      { tier: "prototype", tier_max: 128 },
-    );
-    // The hint gives the real reason: the project's organization is on another tier.
-    assert.ok(typeof result !== "string");
-    assert.match(result.hint, /project's organization is on the prototype tier/);
-    assert.match(result.hint, /wallet's own organization is on team/);
-    assert.doesNotMatch(result.hint, /did not expose function caps/);
-  });
-
-  it("says the wallet's own organization has no tier when that is the case", async () => {
-    const result = await outcome(wiring("", "prototype"));
-    assert.ok(typeof result !== "string");
-    assert.equal(result.tier, "prototype");
-    assert.match(result.hint, /wallet's own organization has no tier/);
-  });
-
-  it("falls back to the wallet's tier when the project cannot be read", async () => {
-    const result = await outcome(wiring("prototype", null));
-    assert.deepEqual(
-      typeof result === "string" ? result : { tier: result.tier, tier_max: result.tier_max },
-      { tier: "prototype", tier_max: 128 },
-    );
-    assert.ok(typeof result !== "string");
-    assert.match(result.hint, /did not expose function caps/);
+    assert.deepEqual(w.requests.map((req) => req.path), ["/apply/v1/plans"], "the plan is the only request");
+    assert.equal(w.puts.length, 0, "nothing is uploaded");
   });
 });
 
