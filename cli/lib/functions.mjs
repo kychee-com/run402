@@ -259,7 +259,10 @@ Options:
                       read an earlier window that newer entries push out of --tail.
                       Not with --follow.
   --request-id <request_id>   Only entries correlated to this req_ (the
-                      x-run402-request-id response header), fnrun_, or fnatt_ id
+                      x-run402-request-id response header), fnrun_, or fnatt_ id,
+                      and every line of the Lambda invocation that served it:
+                      a timeout that logged nothing still has its START/END/
+                      REPORT under --platform or --all
   --app               Only the function's own output (default). Lambda runtime
                       lines (INIT_START, START/END/REPORT RequestId, billed
                       duration) are hidden; "hidden.platform" counts them and a

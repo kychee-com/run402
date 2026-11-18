@@ -147,7 +147,7 @@ const res = await fetch('https://api.run402.com/functions/v1/my-function', {
 
 `run402 doctor` surfaces a `runtime_staleness` check (warning) listing any deployed functions on an older platform runtime, with the `run402 functions rebuild --all` remediation. Staleness is read-only — observing it never mutates a function.
 
-For routed browser 500s, copy `X-Run402-Request-Id` or the JSON `request_id` from the response and run `run402 functions logs <project> <function> --request-id req_...`. `--since` is validated locally and should be supplied for incidents older than the default recent lookup window.
+For routed browser 500s, copy `X-Run402-Request-Id` or the JSON `request_id` from the response and run `run402 functions logs <project> <function> --request-id req_...`. A request read returns the lines tagged with the id and every line of the Lambda invocation that served it, so a timeout that logged nothing still shows its `START`/`END`/`REPORT ... Status: timeout` under `--platform` or `--all` (with the default `--app`, `hidden.platform` counts them). `--since` is validated locally and should be supplied for incidents older than the default recent lookup window; a request with an error fingerprint sample is read in that sample's own window.
 For durable runs, pass the run id or attempt id as the same filter: `--request-id fnrun_...` or `--request-id fnatt_...`.
 `--tail` must be a positive safe integer no larger than 1000, and `--request-id` must match `req_...`, `fnrun_...`, or `fnatt_...`.
 

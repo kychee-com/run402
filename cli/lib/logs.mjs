@@ -40,6 +40,10 @@ Required (one of):
   --request-id <request_id>       A req_... id (the x-run402-request-id response header),
                           or a fnrun_... / fnatt_... durable-run id. Without
                           --function, every function in the project is scanned.
+                          Returns its lines and every line of the Lambda
+                          invocation that served it: a timeout that logged
+                          nothing still has its START/END/REPORT under
+                          --platform or --all.
   --function <name>       Limit to one function. Alone (no --request-id) this
                           is that function's recent tail. A leading positional
                           <function> means the same thing.
