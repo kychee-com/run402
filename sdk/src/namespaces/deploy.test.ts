@@ -38,6 +38,7 @@ import {
   PaymentAttemptError,
   Run402DeployError,
   TransferFreezeError,
+  Unauthorized,
 } from "../errors.js";
 import { fileSetFromDir } from "../node/files.js";
 import { dir } from "../node/assets-node.js";
@@ -1774,7 +1775,8 @@ describe("Deploy.apply (tier limits are the gateway's answer)", () => {
     const w = makeWiring();
     w.setHandler((req) => {
       if (req.path === "/apply/v1/plans") {
-        throw new ApiError("Forbidden", 403, refusal, "planning deploy");
+        // The kernel throws every 401/403 as Unauthorized.
+        throw new Unauthorized("Forbidden", 403, refusal, "planning deploy");
       }
       throw new Error(`unexpected ${req.method ?? "GET"} ${req.path}`);
     });

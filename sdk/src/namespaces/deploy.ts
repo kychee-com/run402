@@ -5465,6 +5465,14 @@ function translateDeployError(
   if (isNoResponseError(err)) {
     return noResponseDeployError(err as Run402Error, phase, planId, operationId);
   }
+  // The kernel throws every 401/403 as `Unauthorized`. One the deploy state
+  // machine itself refused (a tier cap at plan, a CI route scope) names its
+  // phase, so it stays a deploy error, with its fix, next actions and status;
+  // an auth or lifecycle refusal names none and is re-thrown below.
+  const refusal = deployRefusalOf(err);
+  if (refusal) {
+    return translateGatewayError(refusal, phase, planId, operationId, (err as Run402Error).status);
+  }
   // Re-throw other Run402Error subclasses (PaymentRequired, Unauthorized, etc.)
   // as-is — the consumer handles them at a different layer than
   // deploy-state-machine errors.
@@ -5624,6 +5632,20 @@ function extractGatewayError(
     return out;
   }
   return null;
+}
+
+/**
+ * The gateway error of a 401/403 that a deploy phase refused, or null. The
+ * check is structural (`kind`), so it holds across duplicate SDK copies.
+ */
+function deployRefusalOf(err: unknown): GatewayDeployError | null {
+  if (!isRun402Error(err) || (err as { kind?: unknown }).kind !== "unauthorized") return null;
+  const body = err.body && typeof err.body === "object" && !Array.isArray(err.body)
+    ? (err.body as Record<string, unknown>)
+    : null;
+  if (!body) return null;
+  const phase = stringField(body, "phase") ?? stringField(objectField(body, "details"), "phase");
+  return phase ? extractGatewayError(body) : null;
 }
 
 function stringField(obj: unknown, key: string): string | undefined {

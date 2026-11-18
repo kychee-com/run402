@@ -333,6 +333,14 @@ describe("handleDeploy deploy error formatting", () => {
     };
     const result = await handleDeploy({ project_id: "prj_xxx", site: { replace: { "index.html": "<h1>x</h1>" } as never } as never });
     assert.equal(result.isError, true);
+    // The text an agent reads is the gateway's refusal: its message, its fix,
+    // its edit, and no advice the gateway did not send.
+    const text = result.content[0]!.text;
+    assert.ok(text.includes("## Deploy Failed"));
+    assert.ok(text.includes(message));
+    assert.ok(text.includes("**Suggested fix:**") && text.includes('"max_function_timeout_sec": 60'));
+    assert.ok(text.includes("edit_request"));
+    assert.ok(!text.includes("lease may have expired"));
     const structured = deployOutputSchema.parse(result.structuredContent);
     const e = toolErrorSchema.parse(structured.error);
     assert.equal(e.code, "TIER_LIMIT_EXCEEDED");
