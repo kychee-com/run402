@@ -23,6 +23,7 @@ const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "publish-
 //   empty-exists  no output, exit 1, version IS published
 //   empty         no output, exit 1, nothing published
 //   transient     ETIMEDOUT text, exit 1, nothing published
+//   conflict      npm's "cannot publish over" text, exit 1, nothing visible
 //
 // The curl stub answers like the registry with -f: the document on a hit,
 // nothing and exit 22 on a 404.
@@ -53,13 +54,14 @@ if [ "$cmd" = "publish" ]; then
     empty-exists) touch "$STATE/published"; exit 1 ;;
     empty) exit 1 ;;
     transient) echo "npm error code ETIMEDOUT"; exit 1 ;;
+    conflict) echo "npm error You cannot publish over the previously published versions: $FAKE_VERSION."; exit 1 ;;
     *) echo "stub: no outcome for publish #$n"; exit 99 ;;
   esac
 fi
 echo "stub: unexpected npm $*"; exit 98
 `;
 
-function run({ publish = "", prePublished = false, lag = 0, env = {} } = {}) {
+function run({ publish = "", prePublished = false, lag = 0, env = {}, flags = [] } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "publish-idem-"));
   const bin = path.join(root, "bin");
   const state = path.join(root, "state");
@@ -74,7 +76,7 @@ function run({ publish = "", prePublished = false, lag = 0, env = {} } = {}) {
   fs.writeFileSync(path.join(pkgDir, "package.json"), JSON.stringify({ name: "fake-pkg", version: "9.9.9" }));
   if (prePublished) fs.writeFileSync(path.join(state, "published"), "");
   if (lag) fs.writeFileSync(path.join(state, "lag"), String(lag));
-  const res = spawnSync("bash", [SCRIPT, "fake", pkgDir], {
+  const res = spawnSync("bash", [SCRIPT, ...flags, "fake", pkgDir], {
     encoding: "utf8",
     env: {
       ...process.env,
@@ -141,4 +143,49 @@ test("persistent empty failure: bounded retries, then fails", () => {
   assert.equal(r.status, 1, r.out);
   assert.equal(r.publishes, 3);
   assert.match(r.out, /EMPTY output/);
+});
+
+test("--no-wait: npm accepts the version, the helper returns without polling for it", () => {
+  const r = run({ publish: "ok-invisible", flags: ["--no-wait"] });
+  assert.equal(r.status, 0, r.out);
+  assert.equal(r.publishes, 1);
+  assert.equal(r.urls.length, 1, "only the pre-publish registry read");
+  assert.match(r.out, /--wait verifies/);
+});
+
+test("--no-wait: a publish conflict is left to --wait, never re-published", () => {
+  const r = run({ publish: "conflict", flags: ["--no-wait"] });
+  assert.equal(r.status, 0, r.out);
+  assert.equal(r.publishes, 1);
+  assert.match(r.out, /--wait confirms/);
+});
+
+test("--no-wait: still skips a version the registry already holds", () => {
+  const r = run({ prePublished: true, flags: ["--no-wait"] });
+  assert.equal(r.status, 0, r.out);
+  assert.equal(r.publishes, 0);
+  assert.match(r.out, /idempotent skip/);
+});
+
+test("--wait: polls a lagging registry until the version resolves, never publishes", () => {
+  const r = run({ prePublished: true, lag: 2, flags: ["--wait"] });
+  assert.equal(r.status, 0, r.out);
+  assert.equal(r.publishes, 0);
+  assert.equal(r.urls.length, 3);
+  assert.match(r.out, /verified on the registry: fake-pkg@9\.9\.9/);
+});
+
+test("--wait: a version that never resolves fails, never publishes", () => {
+  const r = run({ flags: ["--wait"], env: { PUBLISH_VERIFY_TIMEOUT_S: "1" } });
+  assert.equal(r.status, 1, r.out);
+  assert.equal(r.publishes, 0);
+  assert.match(r.out, /never resolved/);
+});
+
+test("an unknown flag is refused before anything runs", () => {
+  const r = run({ flags: ["--verify"] });
+  assert.equal(r.status, 2, r.out);
+  assert.equal(r.publishes, 0);
+  assert.equal(r.urls.length, 0);
+  assert.match(r.out, /usage:/);
 });

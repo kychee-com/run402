@@ -341,25 +341,41 @@ jobs:
       #   - skips when <name>@<version> already resolves, so a re-run after a
       #     partial publish completes the remaining packages and reaches a
       #     consistent lockstep version;
-      #   - after a claimed success, polls the registry's per-version
-      #     document, which its CDN never caches, until the exact version
-      #     resolves (seconds; bounded at ~10 min); a lagging read never
-      #     re-publishes;
       #   - retries transient provenance/network errors (sigstore rekor TLOG
       #     timeouts, ECONNRESET) and empty/unrecognized failures a bounded
       #     number of times, re-checking the registry before each retry;
       #   - fails loudly otherwise.
+      # The registry records a version four to six minutes after npm accepts
+      # it, so each publish runs with --no-wait and the step after the three
+      # waits for all of them at once: one recording delay per release, not
+      # three. A lagging read never re-publishes.
       - name: Publish run402-mcp to npm
         if: ${{ !inputs.dry_run }}
-        run: ./scripts/publish-idempotent.sh run402-mcp .
+        run: ./scripts/publish-idempotent.sh --no-wait run402-mcp .
 
       - name: Publish run402 to npm
         if: ${{ !inputs.dry_run }}
-        run: ./scripts/publish-idempotent.sh run402 cli
+        run: ./scripts/publish-idempotent.sh --no-wait run402 cli
 
       - name: Publish @run402/sdk to npm
         if: ${{ !inputs.dry_run }}
-        run: ./scripts/publish-idempotent.sh "@run402/sdk" sdk
+        run: ./scripts/publish-idempotent.sh --no-wait "@run402/sdk" sdk
+
+      - name: Wait for the registry to record all three
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -uo pipefail
+          ./scripts/publish-idempotent.sh --wait run402-mcp . &
+          MCP=$!
+          ./scripts/publish-idempotent.sh --wait run402 cli &
+          CLI=$!
+          ./scripts/publish-idempotent.sh --wait "@run402/sdk" sdk &
+          SDK=$!
+          FAILED=0
+          wait "$MCP" || FAILED=1
+          wait "$CLI" || FAILED=1
+          wait "$SDK" || FAILED=1
+          exit "$FAILED"
 
       - name: Commit version bump (rebase-safe — retries against a moving main)
         if: ${{ !inputs.dry_run }}
