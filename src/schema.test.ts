@@ -75,6 +75,13 @@ describe("parse", () => {
     assert.deepEqual(!parsed.success && parsed.issues.map((i) => [i.code, i.keys, i.path]), [["unrecognized_keys", ["bogus", "other"], []]]);
   });
 
+  it("names the keys the refusing object declares, at any depth", () => {
+    const nested = z.object({ outer: z.record(z.string(), z.object({ keep: z.string(), also: z.number().optional() }).strict()) }).strict();
+    const parsed = nested.safeParse({ outer: { a: { keep: "k", bogus: 1 } } });
+    assert.equal(parsed.success, false);
+    assert.deepEqual(!parsed.success && parsed.issues.map((i) => [i.path, i.keys, i.declared]), [[["outer", "a"], ["bogus"], ["keep", "also"]]]);
+  });
+
   it("reports each failure at its path", () => {
     const parsed = schema.safeParse({ name: "", count: 1.5, kind: "c", list: [], map: { a: "no" } });
     assert.equal(parsed.success, false);

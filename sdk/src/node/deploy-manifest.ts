@@ -320,7 +320,10 @@ const MANIFEST_MIGRATION_FIELDS = new Set([
 ]);
 const MANIFEST_FUNCTIONS_FIELDS = new Set(["replace", "patch"]);
 const MANIFEST_FUNCTIONS_PATCH_FIELDS = new Set(["set", "delete"]);
-const MANIFEST_FUNCTION_FIELDS = new Set([
+// The function, config and role fields a manifest function entry takes. Exported
+// from this module (not the package entry) so run402-mcp's `deploy` schema test can
+// check that its function entry declares every one.
+export const MANIFEST_FUNCTION_FIELDS: ReadonlySet<string> = new Set([
   "runtime",
   "source",
   "files",
@@ -336,8 +339,8 @@ const MANIFEST_FUNCTION_FIELDS = new Set([
   "class",
   "capabilities",
 ]);
-const MANIFEST_FUNCTION_CONFIG_FIELDS = new Set(["timeout_seconds", "memory_mb", "timeoutSeconds", "memoryMb"]);
-const MANIFEST_REQUIRE_ROLE_FIELDS = new Set([
+export const MANIFEST_FUNCTION_CONFIG_FIELDS: ReadonlySet<string> = new Set(["timeout_seconds", "memory_mb", "timeoutSeconds", "memoryMb"]);
+export const MANIFEST_REQUIRE_ROLE_FIELDS: ReadonlySet<string> = new Set([
   "table",
   "idColumn",
   "id_column",
@@ -1262,7 +1265,9 @@ function mapFunction(
   }
   const rawRecord = raw as Record<string, unknown>;
   const requireAuth = rawRecord.requireAuth ?? rawRecord.require_auth;
-  const requireRole = rawRecord.requireRole ?? rawRecord.require_role;
+  // `null` removes a gate, so the camelCase key wins whenever it is present:
+  // `requireRole: null ?? require_role` would drop it.
+  const requireRole = rawRecord.requireRole !== undefined ? rawRecord.requireRole : rawRecord.require_role;
   if (requireAuth !== undefined) out.requireAuth = requireAuth as boolean;
   if (requireRole !== undefined) {
     out.requireRole = requireRole === null ? null : mapRequireRole(requireRole);
@@ -1834,7 +1839,7 @@ function mapRoutes(routes: unknown): ReleaseRoutesSpec {
 /** A repo route target in the SDK's camelCase, accepting the manifest's snake_case gate names too. */
 function mapRepoRouteTarget(target: Record<string, unknown>): Record<string, unknown> {
   const requireAuth = target.requireAuth ?? target.require_auth;
-  const requireRole = target.requireRole ?? target.require_role;
+  const requireRole = target.requireRole !== undefined ? target.requireRole : target.require_role;
   return {
     type: "repo",
     repo: target.repo,
@@ -2109,7 +2114,7 @@ function assertPlainRecord(
 function assertKnownFields(
   value: object,
   label: string,
-  allowed: Set<string>,
+  allowed: ReadonlySet<string>,
   hints: Record<string, string> = {},
 ): void {
   for (const key of Object.keys(value)) {

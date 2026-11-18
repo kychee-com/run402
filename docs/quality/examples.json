@@ -1001,10 +1001,18 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/patterns.md",
-    "line": 271,
+    "line": 264,
     "language": "json",
     "kind": "configuration",
-    "sha256": "36ca941314536b5501f364dee34cf2bb98f53b1d04840f728066847daa518422",
+    "sha256": "4d1e493e15a6091bcb984b4a75760c604a73cccb1242b57899bd66d9536b2aa7",
+    "validation": "tool-schema-and-sync"
+  },
+  {
+    "file": "docs-site/src/content/docs//mcp/patterns.md",
+    "line": 290,
+    "language": "json",
+    "kind": "configuration",
+    "sha256": "0a4124651a099b34955f2558b17566cdc2be2672710b06eb871454ba832b5db4",
     "validation": "tool-schema-and-sync"
   },
   {

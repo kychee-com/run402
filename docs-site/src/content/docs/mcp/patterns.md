@@ -257,45 +257,63 @@ export default async (req: Request) => { /* req.headers.get("x-run402-mcp-tool")
 
 `export const tool = { description, input }` declares one, named after the function. `deploy` and `up` read the export by parsing each function's source (never running it) and send it as `functions.<name>.tools` on the release, `[]` when the source declares none. The release is the only carrier: the gateway never reads function source, so it is `deploy` and `up` reading the export that puts the tools in the release, and a function they send with no declaration has none. A declaration that holds a variable, a call, a spread or a template substitution fails before any request with `MCP_TOOL_NOT_STATIC`, the file and the line; a bad shape with `MCP_TOOL_SCHEMA_INVALID`. A tool names a request the function answers (`method`, default `POST`; `path`, default the function's one exact `POST` route), so the gateway refuses a tool nothing answers at the plan (`MCP_TOOL_ROUTE_MISSING`, HTTP 422, `edit_request`). The `deploy` result's `urls.mcp` is the URL to give the person, and a release's `diff.tools` shows what changed. In an Astro app the declarations go in endpoint files and `astro build` reads them.
 
+### Run functions and SSR functions
+
+`class` on a function entry picks its class. `"run"`: the function is reached only through function runs (`r.functions.runs.create` in a `run` snippet, and schedule, email and app-repo triggers), never a route, a tool or a direct call, and in exchange may set a longer `config.timeoutSeconds` (the run cap in Limits). `"ssr"`: the function renders the site's pages through the origin ISR cache and may set more `config.memoryMb`; `@run402/astro` sets it for an Astro app. Omitted, a new function is `standard` and an existing one keeps its class. A deploy above a cap is refused `TIER_LIMIT_EXCEEDED`, and when another class's cap is larger its `edit_request` names that class:
+
+```json
+{
+  "project_id": "prj_...",
+  "functions": {
+    "replace": {
+      "nightly-report": {
+        "source": "export default async (req) => { /* … */ return new Response('done'); }",
+        "class": "run",
+        "config": { "timeoutSeconds": 240 }
+      }
+    }
+  }
+}
+```
+
 ### Function-level auth gates
 
 Declare auth requirements directly on each function spec — the gateway enforces them before invoking the function, so unauthorized callers get `401`/`403` without your code running, and the gateway injects the resolved identity into trustworthy request headers.
 
-Two independent optional fields on each `FunctionSpec` inside `deploy`'s `spec.functions.replace` / `spec.functions.patch.set`:
+Two independent optional fields on each function entry inside `deploy`'s `functions.replace` / `functions.patch.set` (the SDK's `FunctionSpec.requireAuth` / `requireRole`, spelled in snake_case here as in a `run402.json`):
 
 - `require_auth: true` — gateway rejects callers without a valid project user JWT with `401`. No DB lookup. Independent from `require_role`.
 - `require_role: { table, id_column, role_column, allowed[], cache_ttl? } | null` — gateway resolves the caller's role from the project-schema table (RLS-bypass — the gateway is the trusted intermediary) and rejects callers whose role is not in `allowed` with `403`. Implies authentication. Pass `null` in patch mode to remove an existing gate. `cache_ttl` is seconds; default 60, max 600, 0 disables caching (use for instant-revocation paths).
 
-Worked spec fragment for the `deploy` tool — three common shapes:
+Worked `deploy` arguments — three common shapes:
 
 ```json
 {
-  "spec": {
-    "functions": {
-      "patch": {
-        "set": {
-          "list-my-items": {
-            "source": { "data": "/* … */", "encoding": "utf-8" },
-            "require_auth": true
-          },
-          "delete-content": {
-            "source": { "data": "/* … */", "encoding": "utf-8" },
-            "require_role": {
-              "table": "members",
-              "id_column": "user_id",
-              "role_column": "role",
-              "allowed": ["admin"],
-              "cache_ttl": 60
-            }
-          },
-          "moderate-content": {
-            "source": { "data": "/* … */", "encoding": "utf-8" },
-            "require_role": {
-              "table": "members",
-              "id_column": "user_id",
-              "role_column": "role",
-              "allowed": ["admin", "moderator"]
-            }
+  "project_id": "prj_...",
+  "functions": {
+    "patch": {
+      "set": {
+        "list-my-items": {
+          "source": { "data": "/* … */", "encoding": "utf-8" },
+          "require_auth": true
+        },
+        "delete-content": {
+          "source": { "data": "/* … */", "encoding": "utf-8" },
+          "require_role": {
+            "table": "members",
+            "id_column": "user_id",
+            "role_column": "role",
+            "allowed": ["admin"],
+            "cache_ttl": 60
+          }
+        },
+        "moderate-content": {
+          "source": { "data": "/* … */", "encoding": "utf-8" },
+          "require_role": {
+            "table": "members",
+            "id_column": "user_id",
+            "role_column": "role",
+            "allowed": ["admin", "moderator"]
           }
         }
       }

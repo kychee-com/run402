@@ -20,9 +20,10 @@ type Path = ReadonlyArray<string | number>;
 export interface SchemaIssue {
   path: Array<string | number>;
   message: string;
-  /** `unrecognized_keys` for a strict object's undeclared keys (with `keys`); `invalid` otherwise. */
+  /** `unrecognized_keys` for a strict object's undeclared keys (with `keys`, and `declared`, the keys that object declares); `invalid` otherwise. */
   code: "unrecognized_keys" | "invalid";
   keys?: string[];
+  declared?: string[];
 }
 
 export type SafeParseResult<T> = { success: true; data: T } | { success: false; issues: SchemaIssue[]; error: { issues: SchemaIssue[] } };
@@ -414,7 +415,7 @@ export class ObjectSchema<S extends RawShape, M extends UnknownKeys = "strip"> e
     }
     const undeclared = Object.keys(value).filter((key) => !Object.hasOwn(this.shape, key));
     if (undeclared.length > 0 && this.unknownKeys === "strict") {
-      ctx.issues.push({ path: [...path], message: `Unrecognized key(s) in object: ${undeclared.map((k) => `'${k}'`).join(", ")}`, code: "unrecognized_keys", keys: undeclared });
+      ctx.issues.push({ path: [...path], message: `Unrecognized key(s) in object: ${undeclared.map((k) => `'${k}'`).join(", ")}`, code: "unrecognized_keys", keys: undeclared, declared: Object.keys(this.shape) });
       ok = false;
     }
     if (this.unknownKeys === "loose") for (const key of undeclared) defineOwn(out, key, value[key]);

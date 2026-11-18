@@ -419,6 +419,14 @@
                   "config": {
                     "type": "object",
                     "properties": {
+                      "timeout_seconds": {
+                        "type": "number",
+                        "description": "Seconds the function may run. The gateway judges it against the function's class and the tier, and a refusal names the cap. Same as timeoutSeconds."
+                      },
+                      "memory_mb": {
+                        "type": "number",
+                        "description": "Memory in MB, judged like timeout_seconds. Same as memoryMb."
+                      },
                       "timeoutSeconds": {
                         "type": "number"
                       },
@@ -427,6 +435,22 @@
                       }
                     },
                     "additionalProperties": false
+                  },
+                  "class": {
+                    "type": "string",
+                    "enum": [
+                      "standard",
+                      "ssr",
+                      "run"
+                    ],
+                    "description": "Function class. standard serves routes, tools and direct calls; ssr renders a site's pages and may take more memory; run is reached only through function runs (functions.runs.create, schedule, email and app-repo triggers), never a route, a tool or a direct call, and may run longer. Omitted, a new function is standard and an existing one keeps its class. A tier refusal names the class whose cap is larger."
+                  },
+                  "deps": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "npm packages to bundle with the function, e.g. \"lodash@4.17.21\". Omit @run402/functions; it is bundled."
                   },
                   "triggers": {
                     "type": "array",
@@ -457,6 +481,135 @@
                       "additionalProperties": true
                     },
                     "description": "Function triggers. A schedule is { type: \"schedule\", cron: \"0 9 * * *\" } (timezone optional, default UTC); the gateway derives its id and default run, and each tick creates a durable function run. An omitted triggers means none."
+                  },
+                  "tools": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "description": "MCP tool name, unique in the release. Omitted, the function name."
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string",
+                          "description": "What tells an assistant when to call the tool."
+                        },
+                        "input": {
+                          "type": "object",
+                          "additionalProperties": {},
+                          "description": "JSON Schema for the tool's arguments; root type \"object\"."
+                        },
+                        "annotations": {
+                          "type": "object",
+                          "properties": {
+                            "readOnlyHint": {
+                              "type": "boolean"
+                            },
+                            "destructiveHint": {
+                              "type": "boolean"
+                            },
+                            "idempotentHint": {
+                              "type": "boolean"
+                            },
+                            "openWorldHint": {
+                              "type": "boolean"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "method": {
+                          "type": "string",
+                          "enum": [
+                            "GET",
+                            "POST",
+                            "PATCH",
+                            "PUT",
+                            "DELETE"
+                          ],
+                          "description": "Default POST."
+                        },
+                        "path": {
+                          "type": "string",
+                          "description": "Request path, {param} filled from the arguments. Omitted, the function's one exact POST route."
+                        }
+                      },
+                      "required": [
+                        "description",
+                        "input"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "description": "The MCP tools this function answers at https://<host>/_run402/mcp. Omitted, deploy reads them from the source's `export const tool` / `export const tools`; stated (even []), they are sent as written."
+                  },
+                  "require_auth": {
+                    "type": "boolean",
+                    "description": "true: the gateway refuses a caller without a valid project user JWT (401) before the function runs, and injects x-run402-user-id."
+                  },
+                  "require_role": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "table": {
+                            "type": "string",
+                            "description": "Unqualified project-schema table holding role rows, e.g. members."
+                          },
+                          "id_column": {
+                            "type": "string",
+                            "description": "Column matching the user id (the JWT sub), e.g. user_id."
+                          },
+                          "role_column": {
+                            "type": "string",
+                            "description": "Column holding the role string, e.g. role."
+                          },
+                          "allowed": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "description": "Role values that may call the function."
+                          },
+                          "cache_ttl": {
+                            "type": "number",
+                            "description": "Seconds a resolved role is cached; the gateway's default and bounds apply."
+                          },
+                          "on_deny": {
+                            "type": "string",
+                            "enum": [
+                              "envelope",
+                              "redirect"
+                            ],
+                            "description": "redirect sends a signed-out browser to sign_in_path; envelope (default) answers with the error envelope."
+                          },
+                          "sign_in_path": {
+                            "type": "string",
+                            "description": "Same-origin sign-in path for on_deny redirect."
+                          }
+                        },
+                        "required": [
+                          "table",
+                          "id_column",
+                          "role_column",
+                          "allowed"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Role gate: the gateway reads the caller's role from a project table and refuses a role outside allowed (403); implies require_auth. null in patch.set removes the gate."
+                  },
+                  "capabilities": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Capability declarations the gateway and runtime interpret, e.g. astro.ssr.v1. Usually set by framework adapters."
                   }
                 },
                 "additionalProperties": false

@@ -5,6 +5,7 @@ import { jsonBlock, toolErrorFrom, type ToolResult } from "../structured.js";
 import { requireWalletAuth } from "../wallet-auth.js";
 import { updateProject } from "../keystore.js";
 import {
+  FUNCTION_TOOL_METHODS,
   PaymentRequired,
   ROUTE_HTTP_METHODS,
   Run402DeployError,
@@ -121,6 +122,7 @@ const migrationEntry = z
         size: z.number(),
         content_type: z.string().optional(),
       })
+      .strict()
       .optional()
       .describe("Pre-uploaded CAS reference. Mutually exclusive with sql."),
     checksum: z
@@ -136,6 +138,49 @@ const migrationEntry = z
     message: "Migration entries must declare exactly one of id or name.",
     path: ["id"],
   });
+
+// A function entry declares every field the SDK's deploy manifest adapter
+// accepts on one, in its snake_case spelling (docs/style.md: no new camelCase
+// alias); `config.timeoutSeconds` / `memoryMb`, which the gateway's edits name,
+// stay beside `timeout_seconds` / `memory_mb`. The schema holds shape only: the
+// SDK and the gateway judge values and tier caps.
+type ToolMethod = (typeof FUNCTION_TOOL_METHODS)[number];
+const requireRoleSpec = z
+  .object({
+    table: z.string().describe("Unqualified project-schema table holding role rows, e.g. members."),
+    id_column: z.string().describe("Column matching the user id (the JWT sub), e.g. user_id."),
+    role_column: z.string().describe("Column holding the role string, e.g. role."),
+    allowed: z.array(z.string()).describe("Role values that may call the function."),
+    cache_ttl: z.number().optional().describe("Seconds a resolved role is cached; the gateway's default and bounds apply."),
+    on_deny: z.enum(["envelope", "redirect"]).optional().describe("redirect sends a signed-out browser to sign_in_path; envelope (default) answers with the error envelope."),
+    sign_in_path: z.string().optional().describe("Same-origin sign-in path for on_deny redirect."),
+  })
+  .strict();
+const functionToolSpec = z
+  .object({
+    name: z.string().optional().describe("MCP tool name, unique in the release. Omitted, the function name."),
+    title: z.string().optional(),
+    description: z.string().describe("What tells an assistant when to call the tool."),
+    input: z.record(z.string(), z.unknown()).describe("JSON Schema for the tool's arguments; root type \"object\"."),
+    annotations: z
+      .object({
+        readOnlyHint: z.boolean().optional(),
+        destructiveHint: z.boolean().optional(),
+        idempotentHint: z.boolean().optional(),
+        openWorldHint: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
+    method: z
+      .enum(FUNCTION_TOOL_METHODS as unknown as [ToolMethod, ...ToolMethod[]])
+      .optional()
+      .describe("Default POST."),
+    path: z
+      .string()
+      .optional()
+      .describe("Request path, {param} filled from the arguments. Omitted, the function's one exact POST route."),
+  })
+  .strict();
 
 const functionSpec = z
   .object({
@@ -153,10 +198,29 @@ const functionSpec = z
     entrypoint: z.string().optional(),
     config: z
       .object({
+        timeout_seconds: z
+          .number()
+          .optional()
+          .describe("Seconds the function may run. The gateway judges it against the function's class and the tier, and a refusal names the cap. Same as timeoutSeconds."),
+        memory_mb: z
+          .number()
+          .optional()
+          .describe("Memory in MB, judged like timeout_seconds. Same as memoryMb."),
         timeoutSeconds: z.number().optional(),
         memoryMb: z.number().optional(),
       })
+      .strict()
       .optional(),
+    class: z
+      .enum(["standard", "ssr", "run"])
+      .optional()
+      .describe(
+        "Function class. standard serves routes, tools and direct calls; ssr renders a site's pages and may take more memory; run is reached only through function runs (functions.runs.create, schedule, email and app-repo triggers), never a route, a tool or a direct call, and may run longer. Omitted, a new function is standard and an existing one keeps its class. A tier refusal names the class whose cap is larger.",
+      ),
+    deps: z
+      .array(z.string())
+      .optional()
+      .describe("npm packages to bundle with the function, e.g. \"lodash@4.17.21\". Omit @run402/functions; it is bundled."),
     triggers: z
       .array(
         z
@@ -172,6 +236,24 @@ const functionSpec = z
       .describe(
         "Function triggers. A schedule is { type: \"schedule\", cron: \"0 9 * * *\" } (timezone optional, default UTC); the gateway derives its id and default run, and each tick creates a durable function run. An omitted triggers means none.",
       ),
+    tools: z
+      .array(functionToolSpec)
+      .optional()
+      .describe(
+        "The MCP tools this function answers at https://<host>/_run402/mcp. Omitted, deploy reads them from the source's `export const tool` / `export const tools`; stated (even []), they are sent as written.",
+      ),
+    require_auth: z
+      .boolean()
+      .optional()
+      .describe("true: the gateway refuses a caller without a valid project user JWT (401) before the function runs, and injects x-run402-user-id."),
+    require_role: requireRoleSpec
+      .nullable()
+      .optional()
+      .describe("Role gate: the gateway reads the caller's role from a project table and refuses a role outside allowed (403); implies require_auth. null in patch.set removes the gate."),
+    capabilities: z
+      .array(z.string())
+      .optional()
+      .describe("Capability declarations the gateway and runtime interpret, e.g. astro.ssr.v1. Usually set by framework adapters."),
   })
   .strict();
 

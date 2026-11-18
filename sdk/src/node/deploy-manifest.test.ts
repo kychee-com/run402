@@ -1020,6 +1020,17 @@ describe("Node deploy manifest helpers", () => {
     assert.equal(normalized.spec.functions?.patch?.set?.cleared.requireRole, null);
   });
 
+  it("keeps a camelCase requireRole: null, which removes a gate", async () => {
+    const normalized = await normalizeDeployManifest({
+      project_id: "prj_manifest",
+      functions: { patch: { set: { cleared: { requireRole: null } } } },
+      routes: { replace: [{ pattern: "/files/*", target: { type: "repo", repo: "docs", requireRole: null } }] },
+    } as never);
+    assert.equal(normalized.spec.functions?.patch?.set?.cleared.requireRole, null);
+    const target = (normalized.spec.routes as { replace: Array<{ target: Record<string, unknown> }> }).replace[0]!.target;
+    assert.equal(target.requireRole, null);
+  });
+
   it("passes function capabilities through manifest normalization", async () => {
     const normalized = await normalizeDeployManifest({
       project_id: "prj_manifest",

@@ -45,6 +45,8 @@ Applies a `ReleaseSpec` to a project with `r.project(id).apply`: replace-vs-patc
 | `allow_warning_codes` | Continue past these reviewed plan warning codes. |
 | `allow_warnings` | Continue past every warning that requires confirmation (last resort). |
 
+A function entry (`functions.replace.<name>`, `functions.patch.set.<name>`) takes the fields a `run402.json` function takes, by their snake_case names: `runtime`, `source` (or `files` and `entrypoint`), `config` (`timeout_seconds` / `timeoutSeconds`, `memory_mb` / `memoryMb`), `class` (`standard`, `ssr` or `run`), `deps`, `triggers`, `tools`, `require_auth`, `require_role` (`table`, `id_column`, `role_column`, `allowed`, `cache_ttl`), and `capabilities`. The gateway judges the values: a timeout or memory above the tier's cap is refused `TIER_LIMIT_EXCEEDED` with the edit to make, which may be to declare the class whose cap is larger (`class: "run"` for a function reached only through function runs, `class: "ssr"` for one that renders the site's pages). A key the tool does not declare, at any depth, is refused `UNKNOWN_ARGUMENT` naming its path (for example `functions.replace.api.klass`), with `did_you_mean` and the keys that object takes.
+
 `deploy` stops before upload and commit on a warning the gateway marks `requires_confirmation: true` unless every blocking code is in `allow_warning_codes` (or `allow_warnings` is set). An intentionally read-only `GET`/`HEAD` final-wildcard function route is acknowledged with `allow_warning_codes: ["WILDCARD_ROUTE_EXCLUDES_MUTATION_METHODS"]`. Rehearsal is automatic for a migration-bearing plan against a project with a live release; the result's `rehearsal` block says `passed` or why it was `skipped`.
 
 ### `status`

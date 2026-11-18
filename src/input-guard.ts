@@ -21,33 +21,59 @@ export function strictInput<T extends RawShape>(shape: T) {
 /** A tool's strict input schema, whatever its shape (`any`: `refine` makes schemas invariant). */
 export type StrictSchema = ObjectSchema<any, "strict">;
 
-/** The structured refusal for arguments that fail a tool's strict schema, or null when they pass. */
+/**
+ * The structured refusal for arguments that fail a tool's strict schema, or null when they pass.
+ *
+ * An undeclared key is named by its dotted path from the arguments, so a key
+ * nested inside an argument (`functions.patch.set.api.klass`) is never
+ * reported as a top-level argument; its `did_you_mean` searches the keys the
+ * object holding it declares, and `accepted_at` lists them by that object's path.
+ */
 export function argumentError(tool: string, schema: StrictSchema, args: unknown): ToolError | null {
   const parsed = schema.safeParse(args ?? {});
   if (parsed.success) return null;
   const declared = Object.keys(schema.shape);
   const unknown: string[] = [];
+  const didYouMean: Record<string, string[]> = {};
+  const acceptedAt: Record<string, string[]> = {};
+  const hints: string[] = [];
+  let topLevel = false;
   const issues: Array<{ path: string; message: string }> = [];
   for (const issue of parsed.issues) {
-    if (issue.code === "unrecognized_keys") unknown.push(...(issue.keys ?? []));
-    else issues.push({ path: issue.path.join(".") || "(arguments)", message: issue.message });
+    if (issue.code !== "unrecognized_keys") {
+      issues.push({ path: issue.path.join(".") || "(arguments)", message: issue.message });
+      continue;
+    }
+    const at = issue.path.join(".");
+    const beside = at === "" ? declared : (issue.declared ?? []);
+    if (at === "") topLevel = true;
+    else acceptedAt[at] = beside;
+    for (const key of issue.keys ?? []) {
+      const path = at === "" ? key : `${at}.${key}`;
+      const near = closestMembers(key, beside);
+      unknown.push(path);
+      didYouMean[path] = near.map((name) => (at === "" ? name : `${at}.${name}`));
+      hints.push(near.length > 0 ? `${path} (did you mean ${near.join(" or ")}?)` : path);
+    }
   }
   if (unknown.length > 0) {
-    const didYouMean: Record<string, string[]> = {};
-    for (const key of unknown) didYouMean[key] = closestMembers(key, declared);
-    const hints = unknown
-      .map((key) => (didYouMean[key]!.length > 0 ? `${key} (did you mean ${didYouMean[key]!.join(" or ")}?)` : key))
-      .join(", ");
+    const nested = Object.keys(acceptedAt);
+    const noun = nested.length === 0 ? "argument" : "key";
+    const takes = [
+      ...(topLevel ? [`It takes: ${declared.join(", ") || "no arguments"}.`] : []),
+      ...nested.map((at) => `${at} takes: ${acceptedAt[at]!.join(", ") || "no keys"}.`),
+    ];
     return {
       code: "UNKNOWN_ARGUMENT",
-      message: `${tool} does not take ${unknown.length === 1 ? "the argument" : "the arguments"} ${hints}. It takes: ${declared.join(", ") || "no arguments"}.`,
+      message: `${tool} does not take ${unknown.length === 1 ? `the ${noun}` : `the ${noun}s`} ${hints.join(", ")}. ${takes.join(" ")}`,
       next_actions: [{
         type: "edit_request",
-        why: "Remove or rename the arguments the tool does not declare, then call it again.",
+        why: `Remove or rename the ${noun}s the tool does not declare, then call it again.`,
         tool,
         unknown,
         did_you_mean: didYouMean,
         accepted: declared,
+        ...(nested.length > 0 ? { accepted_at: acceptedAt } : {}),
       }],
       details: { unknown, ...(issues.length > 0 ? { issues } : {}) },
     };

@@ -852,3 +852,133 @@ describe("deploySchema fileEntry parsing", () => {
     );
   });
 });
+
+const { argumentError, strictInput } = await import("../input-guard.js");
+const {
+  MANIFEST_FUNCTION_FIELDS,
+  MANIFEST_FUNCTION_CONFIG_FIELDS,
+  MANIFEST_REQUIRE_ROLE_FIELDS,
+} = await import("../../sdk/dist/node/deploy-manifest.js");
+
+describe("deploy function entries take every field a deploy manifest takes", () => {
+  const tool = strictInput(deploySchema);
+
+  // The server's own path: the argument check, then the parsed arguments to the handler.
+  async function callAsServer(args: Record<string, unknown>) {
+    const refusal = argumentError("deploy", tool, args);
+    assert.equal(refusal, null, JSON.stringify(refusal));
+    return handleDeploy(tool.parse(args) as never);
+  }
+  type SpecFn = Record<string, unknown> & { config?: Record<string, unknown> };
+  const replaced = (name: string) => (lastApplySpec as { functions: { replace: Record<string, SpecFn> } }).functions.replace[name]!;
+  const patched = (name: string) => (lastApplySpec as { functions: { patch: { set: Record<string, SpecFn> } } }).functions.patch.set[name]!;
+
+  it("passes class \"run\" through to the SDK spec, the edit a team timeout refusal asks for", async () => {
+    const result = await callAsServer({
+      project_id: "prj_xxx",
+      functions: { replace: { worker: { runtime: "node22", source: "export default async () => new Response('ok');", class: "run", config: { timeoutSeconds: 120 } } } },
+    });
+    assert.equal(result.isError, undefined, JSON.stringify(result));
+    assert.equal(replaced("worker").class, "run");
+    assert.deepEqual(replaced("worker").config, { timeoutSeconds: 120 });
+  });
+
+  it("passes class \"ssr\" in functions.patch.set through to the SDK spec", async () => {
+    const result = await callAsServer({
+      project_id: "prj_xxx",
+      functions: { patch: { set: { web: { source: "export default async () => new Response('ok');", class: "ssr", config: { memory_mb: 1769 } } } } },
+    });
+    assert.equal(result.isError, undefined, JSON.stringify(result));
+    assert.equal(patched("web").class, "ssr");
+    assert.deepEqual(patched("web").config, { memoryMb: 1769 });
+  });
+
+  it("deploys a CLI manifest's snake_case function fields unchanged", async () => {
+    const result = await callAsServer({
+      project_id: "prj_xxx",
+      functions: {
+        patch: {
+          set: {
+            "list-my-items": { source: "export default async () => new Response('ok');", require_auth: true, config: { timeout_seconds: 20 } },
+            "delete-content": {
+              source: "export default async () => new Response('ok');",
+              require_role: { table: "members", id_column: "user_id", role_column: "role", allowed: ["admin"], cache_ttl: 60, on_deny: "redirect", sign_in_path: "/join" },
+            },
+          },
+        },
+      },
+    });
+    assert.equal(result.isError, undefined, JSON.stringify(result));
+    assert.equal(patched("list-my-items").requireAuth, true);
+    assert.deepEqual(patched("list-my-items").config, { timeoutSeconds: 20 });
+    assert.deepEqual(patched("delete-content").requireRole, {
+      table: "members", idColumn: "user_id", roleColumn: "role", allowed: ["admin"], cacheTtl: 60, onDeny: "redirect", signInPath: "/join",
+    });
+  });
+
+  it("takes require_role: null to remove a gate", async () => {
+    const result = await callAsServer({ project_id: "prj_xxx", functions: { patch: { set: { open: { require_role: null } } } } });
+    assert.equal(result.isError, undefined, JSON.stringify(result));
+    assert.equal(patched("open").requireRole, null);
+  });
+
+  it("refuses a camelCase requireAuth / requireRole and names the snake_case field", () => {
+    const error = argumentError("deploy", tool, {
+      project_id: "prj_xxx",
+      functions: { replace: { api: { source: "x", requireAuth: true, requireRole: null } } },
+    });
+    assert.equal(error?.code, "UNKNOWN_ARGUMENT");
+    const didYouMean = error?.next_actions[0]!.did_you_mean as Record<string, string[]>;
+    assert.ok(didYouMean["functions.replace.api.requireAuth"]!.includes("functions.replace.api.require_auth"));
+    assert.ok(didYouMean["functions.replace.api.requireRole"]!.includes("functions.replace.api.require_role"));
+  });
+
+  it("passes tools, deps and capabilities through as written", async () => {
+    const tools = [{ name: "list_events", description: "List upcoming events.", input: { type: "object", properties: { limit: { type: "integer" } } }, method: "GET", path: "/api/events", annotations: { readOnlyHint: true } }];
+    const result = await callAsServer({
+      project_id: "prj_xxx",
+      functions: { replace: { api: { source: "export default async () => new Response('ok');", tools, deps: ["date-fns@^3.0.0"], capabilities: ["astro.ssr.v1"] } } },
+    });
+    assert.equal(result.isError, undefined, JSON.stringify(result));
+    assert.deepEqual(replaced("api").tools, tools);
+    assert.deepEqual(replaced("api").deps, ["date-fns@^3.0.0"]);
+    assert.deepEqual(replaced("api").capabilities, ["astro.ssr.v1"]);
+  });
+
+  it("refuses a config key it does not declare instead of dropping it", () => {
+    const error = argumentError("deploy", tool, {
+      project_id: "prj_xxx",
+      functions: { replace: { api: { source: "x", config: { timeout: 120 } } } },
+    });
+    assert.equal(error?.code, "UNKNOWN_ARGUMENT");
+    assert.deepEqual(error?.next_actions[0]!.unknown, ["functions.replace.api.config.timeout"]);
+  });
+
+  // The schema tracks the SDK's manifest adapter: a field the adapter starts
+  // accepting fails here until the function entry declares it, and the entry
+  // declares nothing the adapter would refuse.
+  it("declares every function, config and role field the SDK's manifest adapter accepts, and none it refuses", () => {
+    const unwrap = (s: unknown): any => {
+      let at = s as { inner?: unknown };
+      while (at && at.inner) at = at.inner as { inner?: unknown };
+      return at;
+    };
+    const functions = unwrap(deploySchema.functions);
+    const entry = unwrap(unwrap(functions.shape.replace).valueSchema);
+    assert.equal(unwrap(unwrap(unwrap(functions.shape.patch).shape.set).valueSchema), entry, "patch.set entries are the same schema");
+    // The adapter takes each field in snake_case and camelCase; the schema
+    // declares at least the snake_case one (docs/style.md), so compare the
+    // fields by their snake_case names, and refuse a key the adapter refuses.
+    const snake = (keys: Iterable<string>) => [...new Set([...keys].map((k) => k.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)))].sort();
+    const pairs: Array<[string, unknown, ReadonlySet<string>]> = [
+      ["function entry", entry, MANIFEST_FUNCTION_FIELDS],
+      ["config", unwrap(entry.shape.config), MANIFEST_FUNCTION_CONFIG_FIELDS],
+      ["require_role", unwrap(entry.shape.require_role), MANIFEST_REQUIRE_ROLE_FIELDS],
+    ];
+    for (const [label, schema, adapter] of pairs) {
+      const declared = Object.keys((schema as { shape: Record<string, unknown> }).shape);
+      assert.deepEqual(snake(declared), snake(adapter), `${label}: every adapter field is declared`);
+      for (const key of declared) assert.ok(adapter.has(key), `${label}: ${key} is a field the adapter accepts`);
+    }
+  });
+});
