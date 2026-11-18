@@ -210,7 +210,8 @@ export interface SendEmailOptions {
   /**
    * Send as another address on a custom domain. Only the domain's effective
    * catch-all mailbox may send as a local part no mailbox owns; the mailbox's
-   * own address is accepted on any mailbox. Refusals: 400
+   * own address, and its plus addresses (`<slug>+<tag>@` the same domain), are
+   * accepted on any mailbox. Refusals: 400
    * `VALIDATION_FAILED` (malformed or reserved local part), 403
    * `FROM_ADDRESS_NOT_ALLOWED`, `FROM_ADDRESS_NOT_EFFECTIVE` (custom
    * addressing demoted) or `SENDER_SUSPENDED`. The result reports the

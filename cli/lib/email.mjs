@@ -122,6 +122,7 @@ Send modes:
   Both modes support: --from-name "Display Name" --from <address> --project <project_id>
   --from <address> sends as another local part of a custom domain; only that
   domain's catch-all mailbox may use it (see 'run402 domains connect --catch-all').
+  Any mailbox may send as its own plus address, <slug>+<tag>@ its own domain.
 
 Choosing a mailbox:
   --mailbox <slug|id>  Target a specific mailbox. Accepted by send, list, get,
@@ -198,7 +199,8 @@ Options:
   --from-name "..."   Display name for the From header
   --from <address>    Send as this address (sent as from_address). Only the
                       domain's catch-all mailbox may send as a local part no
-                      mailbox owns; refusals are FROM_ADDRESS_NOT_ALLOWED,
+                      mailbox owns; any mailbox may send as its own plus
+                      address (<slug>+<tag>@ its domain); refusals are FROM_ADDRESS_NOT_ALLOWED,
                       FROM_ADDRESS_NOT_EFFECTIVE, SENDER_SUSPENDED.
   --mailbox <slug|id> Target mailbox. Omit to use default_outbound_mailbox_id.
   --project <project_id>      Project ID (defaults to the active project)

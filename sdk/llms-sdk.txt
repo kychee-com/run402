@@ -2223,6 +2223,8 @@ await r.domains.connect(projectId, { domain: "app.example.com", desired: { web: 
 
 A catch-all mailbox is a domain setting: `desired.email.mailbox_addresses: { mode: "primary", all_mailboxes: true, catch_all: "letters", addresses: [] }` on a `full_receive_takeover` or `subdomain_mode` domain makes the active mailbox `letters` receive every local part no binding or mailbox owns, and send as any of them with `r.email.send(projectId, { ..., from_address: "tal@example.com" })`. `catch_all` is accepted only beside `all_mailboxes: true`; `null` clears it.
 
+Every mailbox also answers to its plus addresses: mail to `<slug>+<tag>@` its domain (the tag 1–64 of `[a-z0-9._-]`) lands in mailbox `<slug>` with `delivered_to` naming the address, and `r.email.send(projectId, { ..., from_address: "<slug>+<tag>@<its domain>" })` sends as one, so one mailbox gives as many addresses as a test or an app needs.
+
 Every response carries `next_actions[]` (ordered; `[0]` is the recommended step).
 
 ### `r.events`
@@ -2767,7 +2769,8 @@ send(projectId, opts: SendEmailOptions): Promise<SendEmailResult>
   // bounce never changes the message status. No cc (gateway 400).
   // opts.from_address?: string — send as another address on a custom domain.
   // Only the domain's effective catch-all mailbox may send as a local part no
-  // mailbox owns; the mailbox's own address works on any mailbox. Refusals:
+  // mailbox owns; the mailbox's own address and its plus addresses
+  // (<slug>+<tag>@ the same domain) work on any mailbox. Refusals:
   // 400 VALIDATION_FAILED, 403 FROM_ADDRESS_NOT_ALLOWED,
   // FROM_ADDRESS_NOT_EFFECTIVE (addressing demoted), SENDER_SUSPENDED. The
   // result's from_address is the address used.
