@@ -649,7 +649,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/functions.md",
-    "line": 189,
+    "line": 190,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "427a22da24434cbd70cb5a408c599245ebde29378c60e65a5e43e105e736c5fd",
@@ -657,7 +657,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/functions.md",
-    "line": 198,
+    "line": 199,
     "language": "ts",
     "kind": "application-or-sdk",
     "sha256": "fae094f02911729a151cc3386ab85832a5e7cba121556baface686609d6cd134",
@@ -665,7 +665,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/functions.md",
-    "line": 241,
+    "line": 242,
     "language": "json",
     "kind": "configuration",
     "sha256": "8defc9faf6e1dc0800b18f8054342ac842b521168b09082b64dfc43e57fb1b5c",
@@ -937,7 +937,7 @@
   },
   {
     "file": "docs-site/src/content/docs//mcp/limits.md",
-    "line": 51,
+    "line": 52,
     "language": "sql",
     "kind": "application-or-sdk",
     "sha256": "c8a14094898b1cfc517bcbe738f5c3141b9e7415da227db9aad48a8b417937ce",
@@ -1345,7 +1345,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/limits.md",
-    "line": 27,
+    "line": 28,
     "language": "sql",
     "kind": "application-or-sdk",
     "sha256": "c8a14094898b1cfc517bcbe738f5c3141b9e7415da227db9aad48a8b417937ce",
@@ -1353,7 +1353,7 @@
   },
   {
     "file": "docs-site/src/content/docs//sdk/limits.md",
-    "line": 45,
+    "line": 46,
     "language": "json",
     "kind": "configuration",
     "sha256": "6bd1e720d7c3aff6376d2918cc1994d4530ce6eb8460e3e93405f54ab4cad7a0",
