@@ -363,8 +363,13 @@ export interface FunctionSpec {
    * `@run402/astro` (and other framework adapters) for server-rendering
    * entry functions; user-authored functions should usually omit this
    * and let the gateway default.
+   *
+   * `"run"`: the function is reached only through durable function runs
+   * (`functions.runs.create`, schedule, email and app-repo triggers), never a
+   * route, an MCP tool or a direct call, and in exchange may set
+   * `config.timeoutSeconds` up to its tier's run cap (300 s on team).
    */
-  class?: "ssr" | "standard";
+  class?: "ssr" | "standard" | "run";
   /**
    * Function capability declarations interpreted by the gateway/runtime.
    * Framework adapters use this for runtime contracts such as
@@ -3003,7 +3008,7 @@ export interface NormalizedFunctionSpec {
   /** v1.51+ — see `FunctionSpec.requireRole`. */
   requireRole?: RequireRoleSpec | null;
   /** v1.52+ — see `FunctionSpec.class`. */
-  class?: "ssr" | "standard";
+  class?: "ssr" | "standard" | "run";
   /** v1.52+ — see `FunctionSpec.capabilities`. */
   capabilities?: string[];
 }

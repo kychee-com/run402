@@ -1870,6 +1870,49 @@ describe("Deploy.apply (SSR function memory preflight)", () => {
   });
 });
 
+describe("Deploy.apply (run function timeout preflight)", () => {
+  function teamWiring() {
+    const w = makeWiring();
+    w.setHandler((req) => {
+      if (req.path === "/tiers/v1/status") {
+        return { wallet: "0xtest", tier: "team", active: true };
+      }
+      // Reaching planning proves the preflight passed.
+      throw new Error("PLANNED");
+    });
+    return w;
+  }
+  const fnWith = (cls: "run" | "standard" | undefined, timeoutSeconds: number) => ({
+    project_id: "prj_test",
+    functions: {
+      replace: {
+        turn: {
+          source: "export default async () => new Response('ok');",
+          ...(cls ? { class: cls } : {}),
+          config: { timeoutSeconds },
+        },
+      },
+    },
+  });
+  const tierMax = (spec: ReturnType<typeof fnWith>) => async () => {
+    const err = await new Deploy(teamWiring().client).apply(spec).then(() => null, (e: unknown) => e);
+    if (err instanceof Run402DeployError && err.code === "BAD_FIELD") return (err.details as { tier_max: number }).tier_max;
+    assert.match(String((err as Error)?.message), /PLANNED/);
+    return null;
+  };
+
+  it("lets a run function take five minutes on team and holds a standard function to 60 s", async () => {
+    assert.equal(await tierMax(fnWith("run", 300))(), null);
+    assert.equal(await tierMax(fnWith("run", 301))(), 300);
+    assert.equal(await tierMax(fnWith("standard", 120))(), 60);
+  });
+
+  it("leaves a function that declares no class to the gateway up to the run cap", async () => {
+    assert.equal(await tierMax(fnWith(undefined, 120))(), null);
+    assert.equal(await tierMax(fnWith(undefined, 301))(), 300);
+  });
+});
+
 describe("Deploy.apply (preflight reads the project's org tier)", () => {
   function wiring(walletTier: string, projectTier: string | null) {
     const w = makeWiring();

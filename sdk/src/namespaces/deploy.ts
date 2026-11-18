@@ -180,6 +180,7 @@ const STATIC_ACTIVATION_FAILURE_CODES = new Set<string>([
 const STATIC_FUNCTION_LIMITS_BY_TIER: Record<string, StaticTierFunctionLimits> = {
   prototype: {
     maxTimeoutSeconds: 10,
+    maxRunTimeoutSeconds: 10,
     maxMemoryMb: 128,
     maxSsrMemoryMb: 128,
     maxScheduledFunctions: 1,
@@ -187,6 +188,7 @@ const STATIC_FUNCTION_LIMITS_BY_TIER: Record<string, StaticTierFunctionLimits> =
   },
   hobby: {
     maxTimeoutSeconds: 30,
+    maxRunTimeoutSeconds: 30,
     maxMemoryMb: 256,
     maxSsrMemoryMb: 256,
     maxScheduledFunctions: 3,
@@ -194,6 +196,8 @@ const STATIC_FUNCTION_LIMITS_BY_TIER: Record<string, StaticTierFunctionLimits> =
   },
   team: {
     maxTimeoutSeconds: 60,
+    // A run function (class "run"), which only function runs reach, may take five minutes.
+    maxRunTimeoutSeconds: 300,
     maxMemoryMb: 512,
     // An SSR-class function (the Astro `ssr` function) may use one vCPU.
     maxSsrMemoryMb: 1769,
@@ -1699,6 +1703,7 @@ type TierLimitSource = "tier_status" | "local_static_fallback";
 
 interface StaticTierFunctionLimits {
   maxTimeoutSeconds: number;
+  maxRunTimeoutSeconds: number;
   maxMemoryMb: number;
   maxSsrMemoryMb: number;
   maxScheduledFunctions: number;
@@ -1718,6 +1723,7 @@ interface TierFunctionLimitSnapshot {
    */
   walletTier?: string;
   maxTimeoutSeconds?: TierLimitNumber;
+  maxRunTimeoutSeconds?: TierLimitNumber;
   maxMemoryMb?: TierLimitNumber;
   maxSsrMemoryMb?: TierLimitNumber;
   maxScheduledFunctions?: TierLimitNumber;
@@ -1745,20 +1751,27 @@ async function preflightTierFunctionLimits(
   const entries = collectFunctionPreflightEntries(spec.functions);
   for (const entry of entries) {
     const timeout = entry.fn.config?.timeoutSeconds;
+    // A run function has its own timeout cap. With no class declared the
+    // function keeps its stored one, which only the gateway knows.
+    const timeoutLimit = entry.fn.class === "run"
+      ? limits.maxRunTimeoutSeconds ?? limits.maxTimeoutSeconds
+      : entry.fn.class === undefined
+        ? largerLimit(limits.maxTimeoutSeconds, limits.maxRunTimeoutSeconds)
+        : limits.maxTimeoutSeconds;
     if (
       timeout !== undefined &&
-      limits.maxTimeoutSeconds &&
-      timeout > limits.maxTimeoutSeconds.value
+      timeoutLimit &&
+      timeout > timeoutLimit.value
     ) {
       throw tierLimitError(
-        `Function ${entry.name} timeoutSeconds ${timeout} exceeds the ${limits.tier} tier maximum of ${limits.maxTimeoutSeconds.value}.`,
+        `Function ${entry.name} timeoutSeconds ${timeout} exceeds the ${limits.tier} tier maximum of ${timeoutLimit.value}.`,
         `${entry.fieldPrefix}.config.timeoutSeconds`,
         timeout,
         limits,
-        limits.maxTimeoutSeconds,
+        timeoutLimit,
         {
-          tier_max: limits.maxTimeoutSeconds.value,
-          max_function_timeout_seconds: limits.maxTimeoutSeconds.value,
+          tier_max: timeoutLimit.value,
+          max_function_timeout_seconds: timeoutLimit.value,
         },
       );
     }
@@ -1919,8 +1932,9 @@ async function readTierFunctionLimits(
     ],
     fallback?.maxMemoryMb,
   );
-  // tier status names no SSR memory cap, so it comes from the static table.
+  // tier status names no SSR memory cap or run timeout cap, so they come from the static table.
   if (fallback) limits.maxSsrMemoryMb = { value: fallback.maxSsrMemoryMb, source: "local_static_fallback" };
+  if (fallback) limits.maxRunTimeoutSeconds = { value: fallback.maxRunTimeoutSeconds, source: "local_static_fallback" };
   limits.maxScheduledFunctions = tierStatusLimitOrFallback(
     status,
     [

@@ -175,6 +175,7 @@ The deploy result still includes an optional top-level `warnings: string[]` (sib
 | | Prototype | Hobby | Team |
 |---|---|---|---|
 | Max timeout | 10s | 30s | 60s |
+| Max timeout, run function (`class: "run"`) | 10s | 30s | 300s |
 | Max memory | 128 MB | 256 MB | 512 MB |
 | Max memory, SSR function (`class: "ssr"`) | 128 MB | 256 MB | 1,769 MB |
 | Max scheduled triggers | 1 | 3 | 10 |
@@ -256,6 +257,8 @@ filenames from the `artifacts` map; a 404 means the job has not completed or
 the filename was not recorded for that run.
 
 Due durable runs wait automatically while project concurrency slots are occupied. Waiting does not consume an execution attempt or retry budget. Keep the original run ID and inspect its status; do not cancel and recreate work merely because capacity is busy. Lifecycle and exhausted-quota blocks still require recovery.
+
+**Long background work: a run function.** A function declared `class: "run"` in the release spec (`functions.replace.<name>.class`) is reached only through function runs: `functions runs create`, its schedule, email and app-repo triggers. In exchange it may set `config.timeoutSeconds` up to its tier's run cap (300 s on team; prototype and hobby keep 10 s and 30 s). A route to it, `tools` on it, or the class on `bootstrap` / `on-*` is refused at plan time (`INVALID_SPEC`), and a direct call (`/functions/v1/<name>`, `functions invoke`) answers `403 FUNCTION_RUN_ONLY` with a `create_function_run` next action. Long runs never take an ordinary run slot from other projects. The default retry policy retries a timeout, so set `--max-attempts` (or `retry.max_attempts`) to what a five-minute attempt is worth; a run cut off by a gateway restart is retried or failed by that policy while its function finishes on its own, so keep the handler idempotent on its `idempotency_key`.
 
 ### push
 Push notifications: a deployed function sends with `push.send(...)` (above); a signed-in user signs a phone up from the app's page (`<script src="/_run402/push.js">`, then `Run402Push.subscribe({ accessToken })`), and the app's own phone app registers its device with its native session (`POST /_run402/push/devices`). `status` is the agent-side check; `fcm set` / `fcm remove` manage the Firebase key the phone app's devices are reached with. Auth: the project's service_key, your wallet, a sign-in session, or a grant key with `project.read` (status) or `secrets.write` (fcm). Guide: [Push notifications](https://docs.run402.com/build/push/).
