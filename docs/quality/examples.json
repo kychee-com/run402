@@ -241,15 +241,15 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/assets.md",
-    "line": 37,
+    "line": 38,
     "language": "",
     "kind": "output-or-pseudocode",
-    "sha256": "78d7013cf1334cb262815a7fd610950b5ea19fbf2e1d53391f152e296090fc7c",
+    "sha256": "0b44612deb38999976a69ad64c52ae5ba42caaf43e8ee2bbe8e38fb25984b39a",
     "validation": "cli-help-output-sync"
   },
   {
     "file": "docs-site/src/content/docs//cli/assets.md",
-    "line": 53,
+    "line": 55,
     "language": "json",
     "kind": "configuration",
     "sha256": "65bb7106354723ccc3a617ae75fa1cc9416c87894347f0d958c46c25bd9d4fb7",
@@ -257,7 +257,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/assets.md",
-    "line": 83,
+    "line": 85,
     "language": "js",
     "kind": "application-or-sdk",
     "sha256": "085cba08aadfe9332d13ad91e71120381cddc1d1a93f829565c74f8e6011e726",
@@ -265,7 +265,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/assets.md",
-    "line": 148,
+    "line": 150,
     "language": "javascript",
     "kind": "output-or-pseudocode",
     "sha256": "d9d43933429c2eb1bef214d59faeefffc5c11b76dac5d67a420d3e1349047092",
@@ -273,7 +273,7 @@
   },
   {
     "file": "docs-site/src/content/docs//cli/assets.md",
-    "line": 288,
+    "line": 290,
     "language": "js",
     "kind": "application-or-sdk",
     "sha256": "d8d46ae20c855fe088f4aa6738263aa0039dcbe8e499228ea49c1bf328616d01",
