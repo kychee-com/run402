@@ -1804,6 +1804,30 @@ describe("v1.50 assets — --meta / --exif-policy / --sort / --filter argv (issu
     assert.equal(u.searchParams.get("filter_format"), "webp");
   });
 
+  it("assets ls --cursor forwards the cursor unchanged", async () => {
+    const { run } = await import("./cli/lib/assets.mjs");
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = mockFetch;
+    captureStart();
+    try {
+      await run("ls", [
+        "--project", "prj_test123",
+        "--prefix", "photos/",
+        "--limit", "1000",
+        "--cursor", "photos/k0999.jpg",
+      ]);
+    } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    const lsCall = calls.find((c) => /^\/projects\/v1\/[^/]+\/storage\/blobs/.test(c.path));
+    assert.ok(lsCall, "ls call should hit /projects/v1/:project_id/storage/blobs");
+    const u = new URL(lsCall.url);
+    assert.equal(u.searchParams.get("cursor"), "photos/k0999.jpg");
+    assert.equal(u.searchParams.get("prefix"), "photos/");
+    assert.equal(u.searchParams.get("limit"), "1000");
+  });
+
   it("assets ls rejects invalid --sort before any network call", async () => {
     const { run } = await import("./cli/lib/assets.mjs");
     const err = await expectExit1(() => run("ls", [

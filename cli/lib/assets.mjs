@@ -4,7 +4,7 @@
  * Usage:
  *   run402 assets put <file> [files...] [--project <project_id>] [--key <dest>] [--content-type <mime>] [--private] [--immutable] [--stream]
  *   run402 assets get <key> --output <file> [--project <project_id>]
- *   run402 assets ls [--project <project_id>] [--prefix <p>] [--limit <n>]
+ *   run402 assets ls [--project <project_id>] [--prefix <p>] [--limit <n>] [--cursor <c>]
  *   run402 assets rm <key> [--project <project_id>]
  *   run402 assets sign <key> [keys...] [--project <project_id>] [--ttl <seconds>] [--variant <kind>[,<kind>...]]
  *
@@ -52,6 +52,7 @@ Options:
                       printed.
   --prefix <p>        Prefix filter (ls only)
   --limit <n>         Max results (ls only; default 100, max 1000)
+  --cursor <c>        ls only: the next_cursor of the previous page, echoed as is.
   --sort <key>        v1.50 ls only: key:asc | createdAt:asc | createdAt:desc (default key:asc).
   --filter <k=v>      v1.50 ls only: media-picker filter (repeatable). Keys: uploaded_by, tag,
                       format, is_image, min_width, max_width, min_height, max_height.
@@ -132,6 +133,8 @@ Options:
   --project <project_id>      Project ID (defaults to active project)
   --prefix <p>        Only list keys starting with this prefix
   --limit <n>         Max results (default 100, max 1000)
+  --cursor <c>        Next page: pass the previous page's next_cursor unchanged
+                      (opaque). Repeat while has_more is true.
   --sort <key>        v1.50: key:asc (default) | createdAt:asc | createdAt:desc.
                       Cursor is sort-pinned — a cursor reused under another sort returns
                       the first page with "reset": true.
@@ -144,6 +147,7 @@ Options:
 Examples:
   run402 assets ls --project prj_abc123
   run402 assets ls --project prj_abc123 --prefix images/ --limit 500
+  run402 assets ls --project prj_abc123 --prefix images/ --limit 1000 --cursor <next_cursor>
   run402 assets ls --project prj_abc123 --sort createdAt:desc --filter is_image=true --filter min_width=320
   run402 assets ls --project prj_abc123 --filter uploaded_by=agent_abc --filter tag=hero
 `,
@@ -232,7 +236,7 @@ function parseArgs(rawArgs) {
   const valueFlags = [
     "--project", "--key", "--content-type", "--prefix",
     "--limit", "--output", "-o", "--ttl", "--variant",
-    "--meta", "--exif-policy", "--sort", "--filter",
+    "--meta", "--exif-policy", "--sort", "--filter", "--cursor",
   ];
   assertKnownFlags(args, [
     "--project",
@@ -251,13 +255,14 @@ function parseArgs(rawArgs) {
     "--exif-policy",
     "--sort",
     "--filter",
+    "--cursor",
     "--help",
     "-h",
   ], valueFlags);
   const out = { positional: [], project: null, key: null, private: false, immutable: false,
                  stream: false, prefix: null, limit: null,
                  output: null, ttl: null, variant: null, contentType: null,
-                 metadata: null, exifPolicy: null, sort: null, filter: null };
+                 metadata: null, exifPolicy: null, sort: null, filter: null, cursor: null };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--project") out.project = args[++i];
@@ -281,6 +286,7 @@ function parseArgs(rawArgs) {
     }
     else if (a === "--exif-policy") out.exifPolicy = parseExifPolicyFlag(args[++i]);
     // ls --sort and repeatable --filter k=v.
+    else if (a === "--cursor") out.cursor = args[++i];
     else if (a === "--sort") out.sort = parseSortFlag(args[++i]);
     else if (a === "--filter") {
       if (out.filter === null) out.filter = {};
@@ -532,10 +538,9 @@ async function ls(argv) {
     const data = await getSdk().assets.ls(resolvedId, {
       prefix: opts.prefix ?? undefined,
       limit: opts.limit ?? undefined,
-      // Forward sort + filter to the SDK. Cursor stays absent for
-      // first-page calls; agents pass `--cursor` for follow-ups but the
-      // cursor is sort-pinned by the gateway so it doesn't accept a
-      // separate `--cursor` flag here yet.
+      // The cursor is opaque and the gateway's: forwarded unchanged, and an
+      // unusable one comes back as the first page with `reset: true`.
+      ...(opts.cursor ? { cursor: opts.cursor } : {}),
       ...(opts.sort ? { sort: opts.sort } : {}),
       ...(opts.filter ? { filter: opts.filter } : {}),
     });

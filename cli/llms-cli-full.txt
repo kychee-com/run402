@@ -1683,7 +1683,7 @@ Bulk directories: use `deploy` with `assets` slice: additive `assets: { put: [..
 Every `assets` command but `put` calls `/projects/v1/:project_id/storage/*` as you: a member of the project's organization with the viewer role (or a `read` grant) lists, downloads, signs and diagnoses, private blobs included; `rm` needs developer (or a `deploy` grant). No project key on the machine is needed; `--use-service-key` sends the cached one instead. `put` goes through deploy, which authorizes you the same way.
 
 - `run402 assets get <key> --output <file> [--project <project_id>]`
-- `run402 assets ls [--project <project_id>] [--prefix <p>] [--limit <n>] [--sort key:asc|createdAt:asc|createdAt:desc] [--filter <k=v> ...]`
+- `run402 assets ls [--project <project_id>] [--prefix <p>] [--limit <n>] [--cursor <c>] [--sort key:asc|createdAt:asc|createdAt:desc] [--filter <k=v> ...]`
 - `run402 assets rm <key> [--project <project_id>]`
 - `run402 assets sign <key> [keys...] [--project <project_id>] [--ttl <seconds>] [--variant <kind>[,<kind>...]]` — signed URL TTL must be an integer from 60 to 604800 seconds. `--variant thumb|medium|large|display_jpeg` signs that encoded variant of an image instead of the original (how a private image's variants are served), and `--variant video_web|video_poster|video_transcript` a prepared video's web copy, poster or transcript (the `video` block of a listed key); a key without it answers 404 `RESOURCE_NOT_FOUND` naming the variants it has. Several keys, or a comma-separated `--variant thumb,medium,large`, sign every key times every variant in one request (`POST /storage/v1/blobs/sign`, up to 1000 URLs) and print `{ items, expires_at, expires_in }`: the items in order, each `{ key, variant?, signed_url }` or `{ key, variant?, error }` for a key or variant the project lacks.
 - `run402 assets diagnose <url> [--project <project_id>]` — inspect live CDN state for a public URL
@@ -1696,6 +1696,7 @@ Project resolution for every command above: `--project <project_id>` > `RUN402_P
 - `--exif-policy keep|strip`; default `keep`; `strip` removes EXIF bytes + `image_exif`; invalid -> `INVALID_EXIF_POLICY`.
 
 `ls` flags:
+- `--cursor <c>` — the next page. Each page carries `next_cursor` and `has_more`; while `has_more` is true, run the same `ls` (same `--prefix`, `--sort` and `--filter`) with `--cursor` set to the previous page's `next_cursor`, unchanged. The cursor is opaque: echo it, never parse it. An unusable cursor answers the first page with `"reset": true`.
 - `--sort key:asc|createdAt:asc|createdAt:desc` — result ordering. Default `key:asc` (legacy bare-key cursor). The cursor is opaque and sort-pinned; a cursor reused under another sort returns the first page with `"reset": true`. Each page carries `next_cursor` and `has_more`.
 - `--filter key=value` — repeatable media-picker filter. Allowed keys: `uploaded_by`, `tag`, `format`, `is_image` (`true`/`false`), `min_width`, `max_width`, `min_height`, `max_height` (non-negative ints). Unknown keys are rejected client-side with `INVALID_FILTER_KEY`.
 
@@ -1709,6 +1710,7 @@ run402 assets put ./asset --project prj_abc123 --key assets/logo --content-type 
 run402 assets put huge.bin --project prj_abc123 --immutable
 run402 assets get images/logo.png --output /tmp/logo.png --project prj_abc123
 run402 assets ls --project prj_abc123 --prefix images/
+run402 assets ls --project prj_abc123 --prefix images/ --limit 1000 --cursor <next_cursor>
 run402 assets ls --project prj_abc123 --sort createdAt:desc --filter is_image=true --filter min_width=320 --filter format=webp
 run402 assets ls --project prj_abc123 --filter uploaded_by=agent_abc --filter tag=hero
 run402 assets diagnose https://app.run402.com/_blob/avatar.png --project prj_abc123
