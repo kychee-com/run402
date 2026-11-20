@@ -2709,31 +2709,41 @@ The captured set is tracked plus untracked-but-not-ignored — so a build that r
 
 ### `r.errors`
 
-Grouped error fingerprints + a release-baselined promote-vs-revert verdict — "did my new release make things worse?". Also project-scoped as `r.project(id).errors.{list,get,watch}(…)`.
+Grouped error fingerprints + a release-baselined promote-vs-revert verdict — "did my new release make things worse?" — and each group's status. Also project-scoped as `r.project(id).errors.{list,get,watch,resolve,ignore,reopen}(…)`.
 
 ```
 list(projectId, ListErrorsOptions): Promise<ErrorsPage>
 get(projectId, fingerprintId): Promise<ErrorFingerprintDetail>
 watch(projectId, WatchErrorsOptions): Promise<WatchErrorsResult>
+resolve(projectId, fingerprintId): Promise<ErrorStatusChange>   // after the fix is live
+ignore(projectId, fingerprintId): Promise<ErrorStatusChange>
+reopen(projectId, fingerprintId): Promise<ErrorStatusChange>
 
-// ListErrorsOptions = { since?, until?, function?, kind?, fingerprint?, newIn?, limit?, cursor? }
-//   newIn (a release id or "active") → wire param new_in; drives verdict.new_fingerprints + baseline.
+// ListErrorsOptions = { since?, until?, function?, kind?, status?, fingerprint?, newIn?, limit?, cursor? }
+//   status: "open" | "resolved" | "ignored" (every status when absent).
+//   newIn (a release id or "active") → wire param new_in; selects rows first seen under it or
+//   reopened under it, and drives verdict.new_fingerprints / reopened_fingerprints + baseline.
 // ErrorsPage = { verdict, errors: ErrorFingerprint[], has_more, next_cursor? }
 //   verdict = { window{since,until}, compared_release_id, baseline_release_id,
-//               new_fingerprints, recurring_fingerprints, invocations_in_window,
+//               new_fingerprints, recurring_fingerprints, reopened_fingerprints,
+//               by_status{open, resolved, ignored}, invocations_in_window,
 //               coverage{full_fidelity_functions, coarse_functions}, row_cap{limit, at_cap} }
 //   ErrorFingerprint = { fingerprint_id, function, kind, fingerprint_quality, error_name,
 //               message_template, stable_frames[], count, first_seen, last_seen,
-//               first_seen_release_id, last_seen_release_id, samples{first, recent[]}, next_actions[] }
+//               first_seen_release_id, last_seen_release_id,
+//               status, status_changed_at, resolved_in_release_id, reopened_at, reopened_in_release_id, reopen_count,
+//               method, route_pattern, coarse_reason,     // coarse rows: keyed by method + route; why coarse
+//               samples{first, recent[]}, next_actions[] } // samples carry route_pattern when known
+// ErrorStatusChange = ErrorFingerprintDetail & { changed }  // rows whose status changed; 0 when already so
 // WatchErrorsOptions = { newIn (required), durationMs?=600000, intervalMs?=15000, signal?, onPoll?, failFast?=true }
-// WatchErrorsResult = { clean, verdict, new_errors: ErrorFingerprint[], polls, elapsed_ms, aborted? }
+// WatchErrorsResult = { clean, verdict, new_errors, reopened_errors, polls, elapsed_ms, aborted? }
 ```
 
-**The verdict math is the GATEWAY'S — the SDK never recomputes it.** No client-side fingerprinting, re-baselining, or re-counting of `new_fingerprints`; `list` / `get` pass the envelope through untouched and `watch` reads `verdict.new_fingerprints` as the truth (`clean === (verdict.new_fingerprints === 0)`, the gateway's number). The **baseline** is the previously ACTIVE release by activation history (not lineage) — rollback-safe: after A → B → rollback to A → C, C's baseline is A. Cursors (`next_cursor`) are opaque keyset tokens — store and echo as `{ cursor }`, never parse.
+**The verdict math and the status are the GATEWAY'S — the SDK never recomputes or decides them.** No client-side fingerprinting, re-baselining, or re-counting of `new_fingerprints`; `list` / `get` pass the envelope through untouched and `watch` reads the verdict as the truth (`clean` is `new_fingerprints === 0 && reopened_fingerprints === 0`, the gateway's numbers). A group is `open` when first seen; `resolve` marks it resolved once your fix is live (recording the live release), `ignore` stops it announcing anything while it keeps counting, `reopen` undoes either. The gateway reopens a resolved group the next time its error is seen and announces it again; it never resolves a group from quiet time. The three actions take the project's service key or a principal with `project.deploy` (the anon key and a CI session get `403` with `next_actions`), and answer the detail plus `changed`. A `coarse` row's `coarse_reason` says why it has no detail: `no_error_thrown` (the function answered the status itself; for an Astro site, `@run402/astro` sends the errors Astro catches, so those rows are full fidelity) or `function_predates_side_channel` (redeploy it). The **baseline** is the previously ACTIVE release by activation history (not lineage) — rollback-safe: after A → B → rollback to A → C, C's baseline is A. Cursors (`next_cursor`) are opaque keyset tokens — store and echo as `{ cursor }`, never parse.
 
 `watch` is the promote-gate poll loop: run it right after an apply/promote activates a release. It polls immediately, then every `intervalMs`, plus one final poll when `durationMs` elapses; with `failFast` (the default) it stops the moment a poll reports a new identity. **An outage can never masquerade as a clean verdict:** a 4xx other than 408/429 rethrows immediately (auth/validation won't heal), while network errors, 5xx, 408, and 429 are tolerated — but three CONSECUTIVE failed polls rethrow the last error (a success resets the counter). `signal` aborts cleanly: with ≥1 successful poll it returns the result-so-far with `aborted: true`, otherwise it throws.
 
-Auth: the addressed project's OWN key (apikey-authed read). A key for a different project gets `403`, never a `404` that would confirm existence. Read-only; never lifecycle-gated.
+Auth: the addressed project's OWN key when cached locally, else the client's principal (`project.read` for the reads, `project.deploy` for the status actions). A key for a different project gets `403`, never a `404` that would confirm existence. The reads are never lifecycle-gated; the status actions are.
 
 ### `r.email`
 

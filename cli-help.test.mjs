@@ -165,7 +165,7 @@ const MATRIX = {
   // which is why this family was never in MATRIX before repo-surface-
   // consolidation either).
   repos: { shared: ["create", "list", "view", "rename", "delete", "capture", "policy", "mirror", "fsck", "gc", "access", "recover"], specific: [] },
-  errors: { shared: ["list", "get"], specific: [] },
+  errors: { shared: ["list", "get", "resolve", "ignore", "reopen"], specific: [] },
   // doctor and logs are flag-based commands (no subcommands): --help must
   // short-circuit at the top of run() before any check runs or getSdk() call.
   doctor: { shared: [], specific: [] },

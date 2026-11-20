@@ -1341,7 +1341,11 @@ Every page leads with a **verdict** that pairs new-vs-recurring identity counts 
 - `run402 errors list [--project <project_id>] [filters] [--human]` — list + verdict. JSON by default; `--human` renders it.
 - `run402 errors get <fingerprint_id> [--project <project_id>] [--human]` — one identity's full detail (all samples, per-sample `run402 logs` drill-down). The detail view accepts only `--project` / `--human`.
 - `run402 errors list --new-in <release_id|active> --fail-on-new [--human]` — the one-shot promote gate (exit codes below). Branch on the exit code, not on parsing stdout.
-- `run402 errors list --new-in <release_id|active> --watch <dur> [--fail-on-new]` — tail the release under real traffic; with `--fail-on-new` it fails fast the instant a new identity lands.
+- `run402 errors list --new-in <release_id|active> --watch <dur> [--fail-on-new]` — tail the release under real traffic; with `--fail-on-new` it fails fast the instant a new or reopened group lands.
+- `run402 errors resolve <fingerprint_id> [--project <project_id>] [--human]` — mark a group resolved once your fix is live. The gateway records the live release, and opens the group again (and tells you again) the next time its error is seen.
+- `run402 errors ignore <fingerprint_id>` / `run402 errors reopen <fingerprint_id>` — stop a group announcing anything (it keeps counting) / set it back to open.
+
+Every group has a `status`: `open` (as first seen), `resolved` or `ignored`. The platform never resolves a group from quiet time; only you do, and only a reopening changes it back. The three status verbs print the API response (the group, `resolved_in_release_id`, `changed` rows) and take the project's `service_key` or a principal with `project.deploy`; the anon key and a CI session can read but get `403` here. The bug-fixing loop: `run402 errors list --status open`, fix, deploy, `run402 errors resolve <fingerprint_id>` (an open row's `next_actions` carries that command).
 
 Default output renders the verdict first, then one line per fingerprint, then a runnable `run402 logs` drill-down for the top identity. `--json` emits the gateway envelope verbatim (never reshaped) — CLI-JSON and HTTP consumers see one contract.
 
@@ -1355,7 +1359,8 @@ Flags map 1:1 to the HTTP query params:
 | `--function <name>` | `function` | Only this function's fingerprints |
 | `--kind <kind>` | `kind` | One of `uncaught`, `boot_crash`, `invoke_failed`, `handled_5xx` |
 | `--fingerprint <fingerprint_id>` | `fingerprint` | Only this fingerprint id (exact) |
-| `--new-in <rel\|active>` | `new_in` | Only identities first seen under this release (a release id, or the literal `active` for the live release). Drives the verdict's `new_fingerprints` + baseline |
+| `--status <status>` | `status` | One of `open`, `resolved`, `ignored` (default: every status; `verdict.by_status` counts all three) |
+| `--new-in <rel\|active>` | `new_in` | Only identities first seen under this release, or resolved ones it brought back (a release id, or the literal `active` for the live release). Drives the verdict's `new_fingerprints`, `reopened_fingerprints` + baseline |
 | `--limit <n>` | `limit` | Page size (default 50, max 200) |
 | `--cursor <cursor>` | `cursor` | Opaque keyset cursor from a prior response's `next_cursor`. Never parse or compare it — pass it back as-is |
 | `--watch <dur>` | (client poll) | Poll for `<dur>` (`90s`, `10m`, `2h`, or a bare seconds count), then stop. Requires `--new-in`; progress ticks go to stderr so stdout stays pipeable |
@@ -1367,13 +1372,13 @@ Exit codes apply **only when `--fail-on-new` is set** (otherwise failures are th
 
 | Code | Meaning |
 |---|---|
-| `0` clean | no identity was first seen under the `--new-in` release |
-| `1` new | new identities appeared (each printed with a sample id + a runnable `run402 logs` command, so you can act without another query). Under `--watch` this fails FAST the instant a new identity lands |
+| `0` clean | no identity was first seen under the `--new-in` release, and no resolved group came back under it |
+| `1` new | new identities or reopened groups appeared (each printed with a sample id + a runnable `run402 logs` command, a reopened one named `REOPENED`, so you can act without another query). Under `--watch` this fails FAST the instant one lands |
 | `2` unknown | a verdict could NOT be produced — network / auth / API failure, or gate misuse (`--fail-on-new` without `--new-in`). Distinct from `1` so a script can never mistake an outage for a clean verdict |
 
-Quality tiers (`fingerprint_quality` on each row): `frame_names` = full fidelity (grouped by stable stack frames); `message_only` = medium (grouped by normalized message); `coarse` = the function predates the error side-channel — **redeploy it** and future occurrences fingerprint at full fidelity (already-recorded coarse rows stay coarse). The verdict's `coverage` line counts how many functions are still coarse.
+Quality tiers (`fingerprint_quality` on each row): `frame_names` = full fidelity (grouped by stable stack frames); `message_only` = medium (grouped by normalized message); `coarse` = no error detail, grouped by function, status, method and route pattern (`GET /api/threads/[id] answered HTTP 503 with no error detail`). Its `coarse_reason` says why: `no_error_thrown` (the function answered the status itself) or `function_predates_side_channel` — **redeploy it** and future occurrences fingerprint at full fidelity (already-recorded coarse rows stay coarse); `run402 errors get` explains which. The verdict's `coverage` line counts how many functions predate the side-channel. An Astro site on `@run402/astro` reports the errors Astro catches in pages and endpoints, so those are full-fidelity groups with their route.
 
-Auth: the addressed project's own `service_key` when it is cached locally; otherwise your wallet / session / grant key, which the gateway authorizes with `project.read` (an org member or teammate agent — the one a Buzz crash page addresses — needs no project key). A key for project A requesting project B's errors gets `403` (never a `404` that would leak existence). Read-only; never lifecycle-gated.
+Auth: the addressed project's own `service_key` when it is cached locally; otherwise your wallet / session / grant key, which the gateway authorizes with `project.read` for the reads (an org member or teammate agent — the one a Buzz crash page addresses — needs no project key) and `project.deploy` for `resolve` / `ignore` / `reopen`. A key for project A addressing project B's errors gets `403` (never a `404` that would leak existence). The reads are never lifecycle-gated; the status verbs are.
 
 The golden path — gate a promote:
 
@@ -1391,6 +1396,8 @@ Examples:
 run402 errors list                                   # last 24h: verdict + grouped identities
 run402 errors list --function checkout --kind uncaught
 run402 errors get fp_9b21fa                          # one fingerprint, all samples
+run402 errors list --status open                      # what is broken now
+run402 errors resolve fp_9b21fa                      # once the fix is live
 run402 errors list --new-in active                    # what's new under the live release
 run402 errors list --new-in rel_01JX --fail-on-new    # one-shot gate (CI)
 run402 errors list --new-in rel_01JX --watch 10m --interval 30s --fail-on-new

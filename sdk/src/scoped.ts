@@ -238,6 +238,7 @@ import type {
 } from "./namespaces/app-repos.types.js";
 import type {
   ErrorFingerprintDetail,
+  ErrorStatusChange,
   ErrorsPage,
   ListErrorsOptions,
   WatchErrorsOptions,
@@ -635,6 +636,18 @@ class ScopedErrors {
   /** Run the promote-gate poll loop against a release (`{ newIn }` required). */
   watch(opts: WatchErrorsOptions): Promise<WatchErrorsResult> {
     return this.parent.errors.watch(this.projectId, opts);
+  }
+  /** Mark a group resolved once its fix is live; it reopens if its error is seen again. */
+  resolve(fingerprintId: string): Promise<ErrorStatusChange> {
+    return this.parent.errors.resolve(this.projectId, fingerprintId);
+  }
+  /** Mark a group ignored; it keeps counting and announces nothing. */
+  ignore(fingerprintId: string): Promise<ErrorStatusChange> {
+    return this.parent.errors.ignore(this.projectId, fingerprintId);
+  }
+  /** Open a resolved or ignored group again. */
+  reopen(fingerprintId: string): Promise<ErrorStatusChange> {
+    return this.parent.errors.reopen(this.projectId, fingerprintId);
   }
 }
 

@@ -245,7 +245,55 @@ describe("errors.get", () => {
   });
 });
 
+describe("errors.resolve / ignore / reopen", () => {
+  for (const action of ["resolve", "ignore", "reopen"] as const) {
+    it(`${action} POSTs the action route with the project's key and passes the response through`, async () => {
+      const body = { ...ROW, status: action === "resolve" ? "resolved" : action === "ignore" ? "ignored" : "open", changed: 1 };
+      const { fetch, calls } = mockFetch(() => jsonResponse(body));
+      const res = await makeSdk(fetch).errors[action]("prj_1", "fp_9b21fa");
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0]!.method, "POST");
+      assert.equal(calls[0]!.url, `https://api.example.test/projects/v1/prj_1/errors/fp_9b21fa/${action}`);
+      assert.equal(calls[0]!.headers.apikey, "service.jwt.test");
+      assert.deepEqual(res, body);
+    });
+  }
+
+  it("is available project-scoped with the id pre-bound", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({ ...ROW, status: "resolved", changed: 0 }));
+    const res = await makeSdk(fetch).project("prj_9").errors.resolve("fp_x");
+    assert.equal(calls[0]!.url, "https://api.example.test/projects/v1/prj_9/errors/fp_x/resolve");
+    assert.equal(res.changed, 0);
+  });
+
+  it("rejects locally when an id is missing, without a request", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse({}));
+    await assert.rejects(makeSdk(fetch).errors.ignore("prj_1", ""), (err: unknown) => isLocalError(err));
+    await assert.rejects(makeSdk(fetch).errors.reopen("", "fp_x"), (err: unknown) => isLocalError(err));
+    assert.equal(calls.length, 0);
+  });
+
+  it("list passes status through as the wire param", async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(CLEAN_PAGE));
+    await makeSdk(fetch).errors.list("prj_1", { status: "open" });
+    assert.equal(new URL(calls[0]!.url).searchParams.get("status"), "open");
+  });
+});
+
 describe("errors.watch", () => {
+  it("a regression fails the watch: a group reopened under the watched release stops it, named as reopened", async () => {
+    const reopenedRow = { ...ROW, fingerprint_id: "fp_back", first_seen_release_id: "rel_old", reopened_in_release_id: "rel_new", status: "open", reopen_count: 1 };
+    const { fetch, calls } = mockSequence([
+      () => jsonResponse(CLEAN_PAGE),
+      () => jsonResponse({ verdict: { ...VERDICT, reopened_fingerprints: 1 }, errors: [reopenedRow], has_more: false }),
+    ]);
+    const res = await makeSdk(fetch).errors.watch("prj_1", { newIn: "rel_new", durationMs: 10_000, intervalMs: 1 });
+    assert.equal(res.clean, false);
+    assert.equal(calls.length, 2);
+    assert.deepEqual(res.new_errors, []);
+    assert.deepEqual(res.reopened_errors.map((e) => e.fingerprint_id), ["fp_back"]);
+  });
+
   it("requires newIn", async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse(CLEAN_PAGE));
     await assert.rejects(

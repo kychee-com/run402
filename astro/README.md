@@ -83,6 +83,10 @@ await cache.invalidate(`/${slug}`);   // sub-second freshness
 
 Every SSR response includes `x-run402-request-id`, `x-run402-release-id`, `x-run402-function`, `x-run402-cache` (`HIT` / `MISS` / `BYPASS`), `x-run402-cache-reason` (on bypass), `x-run402-cache-age` (on hit), `x-run402-locale`. When the function throws an uncaught exception, the response carries `x-run402-error-code: R402_SSR_RUNTIME_ERROR` and `x-run402-request-id` that you pass to `run402 logs --request-id <req>` for the full stack.
 
+### Errors Astro catches reach your error groups
+
+Astro catches a throw in a page, an endpoint or a middleware and answers your site's 500 page (or its default one), so on its own the platform would see only "HTTP 500 with no error detail". The runtime reports each such error, and the route pattern Astro matched (`/api/threads/[id]`, never the path), to the Run402 function wrapper. The visitor still gets your 500 page unchanged; `run402 errors list` shows an `uncaught` group with the error's name, normalized message and stable frames, its samples carry the route, and `run402 logs --request-id <req>` has the `function.error` line with the stack. An endpoint that answers 500 or above itself, with nothing thrown, becomes a group keyed by its method and route. Nothing to configure. A late error in a streamed page, after its 200 status left, is not reported (it shows only as a broken page). On Run402 Core the runtime reports nothing.
+
 ### Build-time env vars do NOT propagate to the SSR runtime
 
 The SSR Lambda runs in a separate process from your build step. Anything exported in your `astro build` shell (e.g. `KYCHON_ANON_KEY`, `STRIPE_PUBLISHABLE_KEY`, a CI-injected secret) is visible during the build only — `process.env.YOUR_VAR` from inside an SSR-rendered page returns an empty string at request time. This is the correct security posture (build secrets shouldn't ship to a multi-tenant runtime), but it's surprising in retrospect.

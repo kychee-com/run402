@@ -179,6 +179,7 @@ test("renderHumanDetail — both release attributions, coarse hint, per-sample l
   const detail = {
     ...ROW,
     fingerprint_quality: "coarse",
+    coarse_reason: "function_predates_side_channel",
     first_seen: "2026-07-11T00:00:00Z",
     last_seen: "2026-07-12T11:57:00Z",
     first_seen_release_id: "rel_01JW",
@@ -211,7 +212,7 @@ test("renderFailOnNewList — pluralizes and notes the un-shown remainder", () =
 });
 
 test("renderCleanGate — PASS line, watched variant carries duration + polls", () => {
-  assert.match(renderCleanGate(VERDICT, "rel_01JX"), /^PASS — no new error identities first seen under rel_01JX\./);
+  assert.match(renderCleanGate(VERDICT, "rel_01JX"), /^PASS — no new error identities first seen under rel_01JX, and no resolved group came back\./);
   const watched = renderCleanGate(VERDICT, "rel_01JX", { watched: true, durationMs: 600_000, polls: 40 });
   assert.match(watched, /^PASS — Watched 10m \(40 polls\) — no new error identities/);
 });

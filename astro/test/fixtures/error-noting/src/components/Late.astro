@@ -1,0 +1,5 @@
+---
+await new Promise((r) => setTimeout(r, 20));
+throw new Error("late component failed");
+---
+<p>late</p>

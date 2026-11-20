@@ -733,6 +733,10 @@ const SURFACE: Capability[] = [
   // errors.watch is tracked in SDK_ONLY_METHODS (it rides `errors list --watch`).
   { id: "errors_list",                  endpoint: "GET /projects/v1/:project_id/errors",           cli: "errors:list",                   openclaw: "errors:list" },
   { id: "errors_get",                   endpoint: "GET /projects/v1/:project_id/errors/:fingerprint_id", cli: "errors:get",                    openclaw: "errors:get" },
+  // A group's status (open / resolved / ignored), set with deploy authority.
+  { id: "errors_resolve",               endpoint: "POST /projects/v1/:project_id/errors/:fingerprint_id/resolve", cli: "errors:resolve", openclaw: "errors:resolve" },
+  { id: "errors_ignore",                endpoint: "POST /projects/v1/:project_id/errors/:fingerprint_id/ignore",  cli: "errors:ignore",  openclaw: "errors:ignore" },
+  { id: "errors_reopen",                endpoint: "POST /projects/v1/:project_id/errors/:fingerprint_id/reopen",  cli: "errors:reopen",  openclaw: "errors:reopen" },
 
   // ── Sign-in session and write approval (a person, not the agent) ─────────
   // One sign-in session graded by provenance (loopback | device). A browser
@@ -1341,6 +1345,9 @@ const SDK_BY_CAPABILITY: Record<string, string | null> = {
   manage_escalation_contacts: "escalations.listContacts",
   errors_list: "errors.list",
   errors_get: "errors.get",
+  errors_resolve: "errors.resolve",
+  errors_ignore: "errors.ignore",
+  errors_reopen: "errors.reopen",
   get_notification: "admin.getNotification",
   get_notification_preferences: "admin.getNotificationPreferences",
   set_notification_preferences: "admin.setNotificationPreferences",

@@ -14,10 +14,15 @@
  * accepted no-op; stdout shape is never gated on it.
  *
  * The promote gate: `--new-in <release> --fail-on-new` exits 0 when no error
- * identity was first seen under that release, 1 when new fingerprints appear,
- * and 2 when a verdict could not be produced (outage / auth / gate misuse) —
- * so a script can never mistake an outage for a clean verdict. `--watch` tails
- * the release under real traffic and fails fast the moment a new identity lands.
+ * identity was first seen under that release and none it had resolved came
+ * back, 1 when new or reopened groups appear, and 2 when a verdict could not
+ * be produced (outage / auth / gate misuse) — so a script can never mistake an
+ * outage for a clean verdict. `--watch` tails the release under real traffic
+ * and fails fast the moment a new or reopened group lands.
+ *
+ * A group's status: `resolve` / `ignore` / `reopen <fingerprint_id>` call the
+ * gateway's status actions and print the response; the gateway decides and
+ * fences each write. `list --status` filters by it.
  */
 
 import { resolveProjectId } from "./config.mjs";
@@ -35,6 +40,10 @@ import {
 
 /** Wire `kind` vocabulary (mirrors the gateway's KINDS set). */
 export const KINDS = ["uncaught", "boot_crash", "invoke_failed", "handled_5xx"];
+/** Wire `status` vocabulary (the gateway validates it; listed for --help and a local refusal). */
+export const STATUSES = ["open", "resolved", "ignored"];
+/** The status actions, each a POST the gateway fences. */
+const STATUS_ACTIONS = ["resolve", "ignore", "reopen"];
 
 /** Poll cadence floor for --watch, enforced client-side. */
 export const INTERVAL_FLOOR_MS = 5000;
@@ -46,6 +55,9 @@ const HELP = `run402 errors — grouped error fingerprints + a promote/revert ve
 Usage:
   run402 errors list [--project <project_id>] [filters] [--human]
   run402 errors get <fingerprint_id> [--project <project_id>] [--human]
+  run402 errors resolve <fingerprint_id> [--project <project_id>] [--human]
+  run402 errors ignore <fingerprint_id> [--project <project_id>] [--human]
+  run402 errors reopen <fingerprint_id> [--project <project_id>] [--human]
   run402 errors list --new-in <release_id|active> --fail-on-new [--human]
   run402 errors list --new-in <release_id|active> --watch <dur> [--fail-on-new]
 
@@ -64,7 +76,15 @@ What this is:
   history (not lineage) — so it is rollback-safe: after A -> B -> rollback to
   A -> C, C's baseline is A, and identities first seen under B are not
   attributed to C. "--new-in <release>" selects the identities first seen
-  under that release; "active" resolves the project's live release.
+  under that release, and the resolved ones it brought back; "active"
+  resolves the project's live release.
+
+  Every group has a status: open (as first seen), resolved, or ignored. Once
+  your fix is live, run "run402 errors resolve <fingerprint_id>"; if the error
+  is seen again the group opens again and you are told once more. An ignored
+  group keeps counting and announces nothing. The platform never resolves a
+  group on its own. Setting a status takes the project's service key or a
+  principal with project.deploy; the anon key and a CI session can only read.
 
 Filters (each maps 1:1 to a query param):
   --project <project_id> Project to read (defaults to the active project)
@@ -73,8 +93,9 @@ Filters (each maps 1:1 to a query param):
   --function <name>     Only this function's fingerprints
   --kind <kind>         One of: ${KINDS.join(", ")}
   --fingerprint <fingerprint_id>    Only this fingerprint id (exact)
-  --new-in <rel|active> Only identities first seen under this release
-                        (a release id, or the literal "active" for live)
+  --status <status>     One of: ${STATUSES.join(", ")} (default: every status)
+  --new-in <rel|active> Only identities first seen under this release, or
+                        reopened under it (a release id, or "active" for live)
   --limit <n>           Page size (default 50, max 200)
   --cursor <cursor>     Opaque cursor from a prior response's next_cursor.
                         Never parse or compare it — pass it back as-is.
@@ -94,15 +115,18 @@ Output:
 Quality tiers (fingerprint_quality):
   frame_names   full fidelity — grouped by stable stack frames
   message_only  medium — grouped by normalized message
-  coarse        the function predates the error side-channel; redeploy it and
-                future occurrences fingerprint at full fidelity. The verdict's
-                coverage line counts how many functions are still coarse.
+  coarse        no error detail, grouped by function, status, method and
+                route. coarse_reason says why: no_error_thrown (the function
+                answered the status itself), or function_predates_side_channel
+                (redeploy it and future occurrences fingerprint at full
+                fidelity; the verdict's coverage line counts those functions).
 
 Exit codes (the promote gate — only when --fail-on-new is set):
-  0   clean   — no identity was first seen under the --new-in release
-  1   new     — new identities appeared (printed with a sample id + a runnable
-                logs command for each, so you can act without another query).
-                Under --watch this fails FAST the instant a new identity lands.
+  0   clean   — no identity was first seen under the --new-in release, and no
+                resolved group came back under it
+  1   new     — new or reopened groups appeared (printed with a sample id + a
+                runnable logs command for each, so you can act without another
+                query). Under --watch this fails FAST the instant one lands.
   2   unknown — a verdict could NOT be produced: network / auth / API failure,
                 or gate misuse (--fail-on-new without --new-in). A script must
                 never read an outage as a clean verdict, so this is distinct
@@ -111,9 +135,10 @@ Exit codes (the promote gate — only when --fail-on-new is set):
 Auth:
   The addressed project's own service_key when it is cached locally; otherwise
   your wallet / session / grant key, which the gateway authorizes with
-  project.read — an org member or teammate agent needs no project key. A key
-  for project A requesting project B's errors gets 403 (never a 404 that
-  leaks existence). Read-only; never lifecycle-gated.
+  project.read for the reads and project.deploy for resolve / ignore / reopen.
+  An org member or teammate agent needs no project key. A key for project A
+  addressing project B's errors gets 403 (never a 404 that leaks existence).
+  The reads are never lifecycle-gated; the status actions are.
 
 The golden path — gate a promote:
   run402 deploy promote <release_id> --project <project_id>
@@ -127,6 +152,8 @@ Examples:
   run402 errors list --function checkout --kind uncaught
   run402 errors list --since 2026-07-11T00:00:00Z --limit 200
   run402 errors get fp_9b21fa                     # one fingerprint, all samples
+  run402 errors list --status open                # what is broken now
+  run402 errors resolve fp_9b21fa                 # after the fix is live
   run402 errors list --new-in active              # what's new under the live release
   run402 errors list --new-in rel_01JX --fail-on-new    # one-shot gate (CI)
   run402 errors list --new-in rel_01JX --watch 10m --interval 30s --fail-on-new
@@ -141,15 +168,51 @@ export async function run(sub, args = []) {
   switch (sub) {
     case "list": return runErrors("list", rest);
     case "get": return runErrors("get", rest);
+    case "resolve":
+    case "ignore":
+    case "reopen":
+      return runStatusAction(sub, rest);
     default:
       failUnknownSubcommand("errors", sub);
   }
 }
 
+/** `errors resolve|ignore|reopen <fingerprint_id>`: one SDK call, the API response printed as received. */
+async function runStatusAction(action, args) {
+  const a = normalizeArgv(args);
+  const valueFlags = ["--project"];
+  assertKnownFlags(a, ["--project", "--json", "--human", "--help", "-h"], valueFlags);
+  const positionals = positionalArgs(a, valueFlags);
+  if (positionals.length !== 1) {
+    fail({
+      code: "BAD_USAGE",
+      message: positionals.length === 0 ? "Missing <fingerprint_id>." : `Unexpected extra argument: ${positionals[1]}`,
+      hint: `Usage: run402 errors ${action} <fingerprint_id> [--project <project_id>] [--human]`,
+    });
+  }
+  const human = a.includes("--human");
+  if (human && a.includes("--json")) {
+    fail({
+      code: "BAD_USAGE",
+      message: "--human cannot be combined with --json.",
+      hint: "JSON is the default; drop --json to keep it, or keep --human alone for the rendered view.",
+    });
+  }
+  const projectId = resolveProjectId(flagValue(a, "--project"));
+  let result;
+  try {
+    result = await getSdk().errors[action](projectId, positionals[0]);
+  } catch (err) {
+    reportSdkError(err);
+    return;
+  }
+  console.log(human ? renderStatusChange(result) : JSON.stringify(result, null, 2));
+}
+
 async function runErrors(mode, args) {
   const a = normalizeArgv(args);
   const valueFlags = [
-    "--project", "--since", "--until", "--function", "--kind",
+    "--project", "--since", "--until", "--function", "--kind", "--status",
     "--fingerprint", "--new-in", "--limit", "--cursor", "--watch", "--interval",
   ];
   const boolFlags = ["--json", "--human", "--fail-on-new", "--help", "-h"];
@@ -192,7 +255,7 @@ async function runErrors(mode, args) {
   // ---- Detail view (single positional fingerprint id) ----------------------
   if (fingerprintId) {
     const listOnly = [
-      "--since", "--until", "--function", "--kind", "--fingerprint",
+      "--since", "--until", "--function", "--kind", "--status", "--fingerprint",
       "--new-in", "--limit", "--cursor", "--watch", "--interval", "--fail-on-new",
     ];
     const offending = listOnly.find((f) => a.includes(f));
@@ -246,6 +309,7 @@ async function runErrors(mode, args) {
   const until = flagValue(a, "--until");
   const fn = flagValue(a, "--function");
   const kind = flagValue(a, "--kind");
+  const status = flagValue(a, "--status");
   const fingerprint = flagValue(a, "--fingerprint");
   const limit = flagValue(a, "--limit");
   const cursor = flagValue(a, "--cursor");
@@ -255,6 +319,10 @@ async function runErrors(mode, args) {
   if (kind != null) {
     assertAllowedValue(kind, KINDS, "--kind");
     opts.kind = kind;
+  }
+  if (status != null) {
+    assertAllowedValue(status, STATUSES, "--status");
+    opts.status = status;
   }
   if (fingerprint != null) opts.fingerprint = fingerprint;
   if (newIn != null) opts.newIn = newIn;
@@ -295,7 +363,7 @@ async function runErrors(mode, args) {
 
   // ---- Watch mode ----------------------------------------------------------
   if (watchConfig != null) {
-    await runWatch({ projectId, newIn, ...watchConfig, failOnNew, json });
+    await runWatch({ projectId, newIn, ...watchConfig, failOnNew, human });
     return;
   }
 
@@ -315,8 +383,9 @@ async function runErrors(mode, args) {
 
   if (failOnNew) {
     const totalNew = Number(page?.verdict?.new_fingerprints ?? 0);
-    if (totalNew > 0) {
-      if (human) console.log(renderFailOnNewList(page?.errors ?? [], newIn, totalNew));
+    const totalReopened = Number(page?.verdict?.reopened_fingerprints ?? 0);
+    if (totalNew > 0 || totalReopened > 0) {
+      if (human) console.log(renderFailOnNewList(page?.errors ?? [], newIn, totalNew, totalReopened, page?.verdict?.compared_release_id));
       process.exit(1);
     }
     if (human) console.log(renderCleanGate(page?.verdict, newIn));
@@ -328,18 +397,19 @@ async function runErrors(mode, args) {
 
 // ─── Watch driver ────────────────────────────────────────────────────────────
 
-async function runWatch({ projectId, newIn, durationMs, intervalMs, failOnNew, json }) {
+async function runWatch({ projectId, newIn, durationMs, intervalMs, failOnNew, human }) {
   let lastPage = null;
   let triggeringPage = null;
 
   const onPoll = (page, meta) => {
     if (page && typeof page === "object") lastPage = page;
     const newSoFar = Number(page?.verdict?.new_fingerprints ?? 0);
-    if (failOnNew && newSoFar > 0 && !triggeringPage) triggeringPage = page;
+    const reopenedSoFar = Number(page?.verdict?.reopened_fingerprints ?? 0);
+    if (failOnNew && (newSoFar > 0 || reopenedSoFar > 0) && !triggeringPage) triggeringPage = page;
     const poll = meta?.poll ?? "?";
     const elapsed = fmtDuration(meta?.elapsedMs ?? 0);
     // Progress lives on stderr so stdout carries only the final page / render.
-    process.stderr.write(`watch · poll ${poll} · ${elapsed} elapsed · ${fmtInt(newSoFar)} new fingerprint(s) so far\n`);
+    process.stderr.write(`watch · poll ${poll} · ${elapsed} elapsed · ${fmtInt(newSoFar)} new, ${fmtInt(reopenedSoFar)} reopened so far\n`);
   };
 
   let result;
@@ -359,14 +429,16 @@ async function runWatch({ projectId, newIn, durationMs, intervalMs, failOnNew, j
 
   const clean = result?.clean === true;
   const newErrors = Array.isArray(result?.new_errors) ? result.new_errors : [];
+  const reopenedErrors = Array.isArray(result?.reopened_errors) ? result.reopened_errors : [];
   const totalNew = Number(result?.verdict?.new_fingerprints ?? newErrors.length);
+  const totalReopened = Number(result?.verdict?.reopened_fingerprints ?? reopenedErrors.length);
 
   if (!human) {
     // The triggering page if we fired early, else the last poll's page. Fall
     // back to a page-shaped envelope only if no poll ever ran (edge case).
     const page = triggeringPage ?? lastPage ?? {
       verdict: result?.verdict ?? null,
-      errors: newErrors,
+      errors: [...newErrors, ...reopenedErrors],
       has_more: false,
     };
     console.log(JSON.stringify(page, null, 2));
@@ -374,7 +446,9 @@ async function runWatch({ projectId, newIn, durationMs, intervalMs, failOnNew, j
 
   if (failOnNew) {
     if (!clean) {
-      if (human) console.log(renderFailOnNewList(newErrors, newIn, totalNew));
+      if (human) {
+        console.log(renderFailOnNewList([...newErrors, ...reopenedErrors], newIn, totalNew, totalReopened, result?.verdict?.compared_release_id));
+      }
       process.exit(1);
     }
     if (human) {
@@ -524,6 +598,14 @@ export function renderVerdict(verdict) {
       : `${L("new error identities")}${newVal}`,
   );
   lines.push(`${L("recurring")}${fmtInt(v.recurring_fingerprints ?? 0)}`);
+  lines.push(
+    v.compared_release_id
+      ? `${L("reopened")}${fmtInt(v.reopened_fingerprints ?? 0)}   ← resolved groups seen again under ${v.compared_release_id}`
+      : `${L("reopened")}${fmtInt(v.reopened_fingerprints ?? 0)}`,
+  );
+  if (v.by_status) {
+    lines.push(`${L("by status")}${fmtInt(v.by_status.open ?? 0)} open · ${fmtInt(v.by_status.resolved ?? 0)} resolved · ${fmtInt(v.by_status.ignored ?? 0)} ignored`);
+  }
   lines.push(`${L("invocations in window")}${fmtInt(v.invocations_in_window ?? 0)}`);
 
   const full = Number(v.coverage?.full_fidelity_functions ?? 0);
@@ -543,8 +625,36 @@ export function renderVerdict(verdict) {
 export function renderListRow(row) {
   const r = row || {};
   const coarse = r.fingerprint_quality === "coarse" ? "  [coarse]" : "";
+  const status = r.status && r.status !== "open" ? `  [${r.status}]` : "";
+  const reopened = r.status === "open" && Number(r.reopen_count ?? 0) > 0 ? "  [reopened]" : "";
   const msg = truncate(r.message_template, 100);
-  return `${r.fingerprint_id}  ${r.kind}  ×${fmtInt(r.count)}  ${r.error_name}  fn:${r.function}  "${msg}"  · ${relativeTime(r.last_seen)}${coarse}`;
+  return `${r.fingerprint_id}  ${r.kind}  ×${fmtInt(r.count)}  ${r.error_name}  fn:${r.function}  "${msg}"  · ${relativeTime(r.last_seen)}${coarse}${status}${reopened}`;
+}
+
+/** Why a coarse row has no detail, as the gateway computed it (`coarse_reason`). */
+function coarseExplanation(reason) {
+  if (reason === "no_error_thrown") {
+    return "The function answered this status itself; nothing was thrown, so there is no error detail. Read a sample's logs for why it answered so.";
+  }
+  if (reason === "function_predates_side_channel") {
+    return "This function predates the error side-channel; redeploying it upgrades future fingerprint fidelity (frame-level grouping).";
+  }
+  return null;
+}
+
+/** A status action's result: the group's status, the release it was resolved in, and how many rows changed. */
+export function renderStatusChange(result) {
+  const r = result || {};
+  const changed = Number(r.changed ?? 0);
+  const parts = [];
+  const verb = r.status === "resolved" ? "resolved" : r.status === "ignored" ? "ignored" : "open";
+  parts.push(`${r.fingerprint_id} is ${verb} (${fmtInt(changed)} row${changed === 1 ? "" : "s"} changed${changed === 0 ? "; it already was" : ""}).`);
+  if (r.status === "resolved") {
+    parts.push(`  resolved in     ${r.resolved_in_release_id ?? "(no live release)"}`);
+    parts.push("  It opens again if this error is seen again.");
+  }
+  if (r.status_changed_at) parts.push(`  status changed  ${r.status_changed_at}`);
+  return parts.join("\n");
 }
 
 /** The full human list render: verdict, rows (or the empty note), a drill-down. */
@@ -592,7 +702,14 @@ export function renderHumanDetail(detail) {
   parts.push(`  function        fn:${d.function}`);
   parts.push(`  quality         ${d.fingerprint_quality}`);
   if (d.fingerprint_quality === "coarse") {
-    parts.push("                  This function predates the error side-channel; redeploying it upgrades future fingerprint fidelity (frame-level grouping).");
+    const why = coarseExplanation(d.coarse_reason);
+    if (why) parts.push(`                  ${why}`);
+    if (d.route_pattern) parts.push(`  route           ${d.method ?? ""} ${d.route_pattern}`.trimEnd());
+  }
+  parts.push(`  status          ${d.status ?? "open"}${d.status_changed_at ? `  (since ${d.status_changed_at})` : ""}`);
+  if (d.resolved_in_release_id) parts.push(`  resolved in     ${d.resolved_in_release_id}`);
+  if (Number(d.reopen_count ?? 0) > 0) {
+    parts.push(`  reopened        ${fmtInt(d.reopen_count)}×, last ${d.reopened_at ?? "?"} (release ${d.reopened_in_release_id ?? "unknown"})`);
   }
   parts.push(`  count           ${fmtInt(d.count)}`);
   parts.push(`  first seen      ${d.first_seen}  (release ${d.first_seen_release_id ?? "unknown"})`);
@@ -625,25 +742,43 @@ export function renderHumanDetail(detail) {
   return parts.join("\n");
 }
 
-/** Actionable exit-1 render: each new identity with a sample id + logs command. */
-export function renderFailOnNewList(newErrors, newIn, totalNew) {
-  const rows = Array.isArray(newErrors) ? newErrors : [];
-  const total = Number.isFinite(Number(totalNew)) ? Number(totalNew) : rows.length;
+/**
+ * Actionable exit-1 render: each new or reopened group with a sample id + logs
+ * command. A row is named reopened when the compared release brought it back
+ * (`reopened_in_release_id`), not because it was first seen there.
+ */
+export function renderFailOnNewList(rowsIn, newIn, totalNew, totalReopened = 0, comparedReleaseId = null) {
+  const rows = Array.isArray(rowsIn) ? rowsIn : [];
+  const compared = comparedReleaseId ?? newIn;
+  const isReopened = (row) => row?.reopened_in_release_id === compared && row?.first_seen_release_id !== compared;
+  const total = Number.isFinite(Number(totalNew)) ? Number(totalNew) : rows.filter((r) => !isReopened(r)).length;
+  const reopened = Number.isFinite(Number(totalReopened)) ? Number(totalReopened) : rows.filter(isReopened).length;
   const parts = [];
-  parts.push(`FAIL — ${fmtInt(total)} new error identit${total === 1 ? "y" : "ies"} first seen under ${newIn}:`);
+  const counts = [
+    ...(total > 0 || reopened === 0 ? [`${fmtInt(total)} new error identit${total === 1 ? "y" : "ies"} first seen`] : []),
+    ...(reopened > 0 ? [`${fmtInt(reopened)} resolved group${reopened === 1 ? "" : "s"} reopened`] : []),
+  ];
+  parts.push(`FAIL — ${counts.join(" and ")} under ${newIn}:`);
   for (const row of rows) {
     const sid = topSampleId(row);
     parts.push("");
-    parts.push(`  ${row.fingerprint_id}  ${row.kind}  ×${fmtInt(row.count)}  ${row.error_name}  fn:${row.function}`);
+    parts.push(`  ${row.fingerprint_id}  ${isReopened(row) ? "REOPENED  " : ""}${row.kind}  ×${fmtInt(row.count)}  ${row.error_name}  fn:${row.function}`);
     parts.push(`    "${truncate(row.message_template, 100)}"`);
     if (sid) {
       parts.push(`    sample ${sid}`);
       parts.push(`    ${logsCommand(row.function, sid)}`);
     }
   }
-  if (total > rows.length) {
+  for (const row of rows) {
+    const resolve = Array.isArray(row?.next_actions) ? row.next_actions.find((x) => x?.type === "resolve_error") : null;
+    if (isReopened(row) && resolve?.command) {
+      parts.push("");
+      parts.push(`  After a fix for ${row.fingerprint_id} is live: ${resolve.command}`);
+    }
+  }
+  if (total + reopened > rows.length) {
     parts.push("");
-    parts.push(`  … and ${fmtInt(total - rows.length)} more not shown (raise --limit or page with --cursor).`);
+    parts.push(`  … and ${fmtInt(total + reopened - rows.length)} more not shown (raise --limit or page with --cursor).`);
   }
   return parts.join("\n");
 }
@@ -654,7 +789,7 @@ export function renderCleanGate(verdict, newIn, opts = {}) {
   const watched = opts.watched
     ? `Watched ${fmtDuration(opts.durationMs)}${opts.polls != null ? ` (${fmtInt(opts.polls)} polls)` : ""} — `
     : "";
-  parts.push(`PASS — ${watched}no new error identities first seen under ${newIn}.`);
+  parts.push(`PASS — ${watched}no new error identities first seen under ${newIn}, and no resolved group came back.`);
   if (verdict) parts.push(renderVerdict(verdict));
   return parts.join("\n");
 }

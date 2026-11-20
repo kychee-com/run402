@@ -20,9 +20,15 @@
  *     // release. w.new_errors carries the grouped rows + fetch_logs drill-downs.
  *   }
  *
- * `clean === (verdict.new_fingerprints === 0)` — the gateway's count, never a
+ * `clean` is the gateway's counts (no new and no reopened group), never a
  * client recount. Exposed both unscoped (`r.errors.list(projectId, …)`) and
  * project-scoped (`r.project(id).errors.list(…)`), mirroring `r.events`.
+ *
+ * A group's status: `resolve` once a fix is live, `ignore` to stop counting
+ * it as broken, `reopen` to undo either. The gateway decides and fences each
+ * write and reopens a resolved group the next time its error is seen; the SDK
+ * only calls. Setting a status takes the project's service key or a principal
+ * with `project.deploy`.
  *
  * Auth: the addressed project's OWN key when it is cached locally; otherwise
  * the client's principal (SIWX wallet / session / grant key) with
@@ -37,6 +43,7 @@ import type {
   ErrorsPage,
   ErrorFingerprint,
   ErrorFingerprintDetail,
+  ErrorStatusChange,
   ListErrorsOptions,
   WatchErrorsOptions,
   WatchErrorsResult,
@@ -55,11 +62,17 @@ function errorsQuery(opts: ListErrorsOptions = {}): string {
   if (opts.function !== undefined) params.set("function", opts.function);
   if (opts.kind !== undefined) params.set("kind", opts.kind);
   if (opts.fingerprint !== undefined) params.set("fingerprint", opts.fingerprint);
+  if (opts.status !== undefined) params.set("status", opts.status);
   if (opts.newIn !== undefined) params.set("new_in", opts.newIn);
   if (opts.limit !== undefined) params.set("limit", String(opts.limit));
   if (opts.cursor !== undefined) params.set("cursor", opts.cursor);
   const qs = params.toString();
   return qs ? `?${qs}` : "";
+}
+
+/** The promote gate: no group new under the release and none it brought back (the gateway's counts). */
+function verdictIsClean(page: ErrorsPage): boolean {
+  return page.verdict.new_fingerprints === 0 && (page.verdict.reopened_fingerprints ?? 0) === 0;
 }
 
 /**
@@ -164,18 +177,59 @@ export class Errors {
     );
   }
 
+  /**
+   * Mark a group resolved once its fix is live
+   * (`POST /projects/v1/:project_id/errors/:fingerprint_id/resolve`). The
+   * gateway records the project's live release as `resolved_in_release_id`
+   * and reopens the group the next time its error is seen. Resolving a group
+   * that is already resolved answers `changed: 0`.
+   */
+  resolve(projectId: string, fingerprintId: string): Promise<ErrorStatusChange> {
+    return this.#setStatus(projectId, fingerprintId, "resolve", "resolving an error group");
+  }
+
+  /**
+   * Mark a group ignored (`POST …/errors/:fingerprint_id/ignore`). An ignored
+   * group keeps counting and stays listed, and its recurrence announces nothing.
+   */
+  ignore(projectId: string, fingerprintId: string): Promise<ErrorStatusChange> {
+    return this.#setStatus(projectId, fingerprintId, "ignore", "ignoring an error group");
+  }
+
+  /** Open a resolved or ignored group again (`POST …/errors/:fingerprint_id/reopen`). */
+  reopen(projectId: string, fingerprintId: string): Promise<ErrorStatusChange> {
+    return this.#setStatus(projectId, fingerprintId, "reopen", "reopening an error group");
+  }
+
+  async #setStatus(
+    projectId: string,
+    fingerprintId: string,
+    action: "resolve" | "ignore" | "reopen",
+    context: string,
+  ): Promise<ErrorStatusChange> {
+    if (!projectId) throw new LocalError(`errors.${action} requires a projectId`, context);
+    if (!fingerprintId) throw new LocalError(`errors.${action} requires a fingerprintId`, context);
+    return this.client.request<ErrorStatusChange>(
+      `/projects/v1/${encodeURIComponent(projectId)}/errors/${encodeURIComponent(fingerprintId)}/${action}`,
+      {
+        method: "POST",
+        ...(await credentialFor(this.client, projectId)),
+        context,
+      },
+    );
+  }
 
   /**
    * The promote-gate poll loop. Run it right after an apply/promote activates a
    * release to watch that release under real traffic. Polls {@link list} with
    * `{ newIn }` immediately, then every `intervalMs`, and does one final poll
    * when the `durationMs` window elapses. With `failFast` (the default), stops
-   * the moment a poll reports `verdict.new_fingerprints > 0`.
+   * the moment a poll reports a new group or a reopened one.
    *
-   * The verdict is the gateway's — `clean === (verdict.new_fingerprints === 0)`
-   * is read straight off the last observed page; nothing is recomputed here.
-   * `new_errors` is that page's `errors[]` (already server-filtered to
-   * first-seen-under-release when `newIn` is passed).
+   * The verdict is the gateway's — `clean` is `new_fingerprints === 0` and
+   * `reopened_fingerprints === 0`, read straight off the last observed page;
+   * nothing is recomputed here. `new_errors` and `reopened_errors` split that
+   * page's `errors[]` by the compared release.
    *
    * Fault tolerance so an outage can't masquerade as a verdict: a 4xx (other
    * than 408/429) rethrows immediately — auth/validation won't heal; network
@@ -232,7 +286,7 @@ export class Errors {
             // A caller's onPoll must never break the watch loop.
           }
         }
-        if (failFast && page.verdict.new_fingerprints > 0) triggered = true;
+        if (failFast && !verdictIsClean(page)) triggered = true;
       } catch (err) {
         lastError = err;
         // Won't heal (4xx auth/validation, local credential miss) → surface now.
@@ -267,11 +321,16 @@ export class Errors {
       throw new LocalError("errors.watch produced no result", "watching release errors");
     }
 
-    const newErrors: ErrorFingerprint[] = lastPage.errors;
+    const compared = lastPage.verdict.compared_release_id;
+    const newErrors: ErrorFingerprint[] = lastPage.errors.filter((e) => e.first_seen_release_id === compared);
+    const reopenedErrors: ErrorFingerprint[] = lastPage.errors.filter(
+      (e) => e.reopened_in_release_id === compared && e.first_seen_release_id !== compared,
+    );
     const result: WatchErrorsResult = {
-      clean: lastPage.verdict.new_fingerprints === 0,
+      clean: verdictIsClean(lastPage),
       verdict: lastPage.verdict,
       new_errors: newErrors,
+      reopened_errors: reopenedErrors,
       polls,
       elapsed_ms: Date.now() - started,
     };

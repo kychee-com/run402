@@ -7552,4 +7552,123 @@ describe("CLI errors verdict + promote gate", () => {
     assert.equal(sp.get("cursor"), "cur_opaque");
     assert.equal(sp.has("newIn"), false, "wire param must be snake_case new_in, never camelCase newIn");
   });
+
+  // The status actions and the reopened gate (actionable-error-groups).
+  const REOPENED_ROW = {
+    ...ERRORS_PAGE_CLEAN.errors[0],
+    fingerprint_id: "fp_back01",
+    kind: "uncaught",
+    first_seen_release_id: "rel_old1",
+    last_seen_release_id: "rel_new1",
+    status: "open",
+    reopen_count: 1,
+    reopened_at: "2026-07-11T11:00:00.000Z",
+    reopened_in_release_id: "rel_new1",
+    resolved_in_release_id: "rel_old1",
+    samples: {
+      first: { id: "req_back_first", at: "2026-07-10T09:00:00.000Z", release_id: "rel_old1" },
+      recent: [{ id: "req_back_new", at: "2026-07-11T11:00:00.000Z", release_id: "rel_new1", route_pattern: "/throw" }],
+    },
+    next_actions: [
+      { type: "fetch_logs", command: "run402 logs ssr --request-id req_back_new", why: "Retrieve the logs." },
+      { type: "resolve_error", command: `run402 errors resolve fp_back01 --project ${TEST_PROJECT.project_id}`, why: "Once fixed." },
+    ],
+  };
+  const ERRORS_PAGE_REOPENED = {
+    verdict: { ...ERRORS_PAGE_CLEAN.verdict, new_fingerprints: 0, reopened_fingerprints: 1, by_status: { open: 1, resolved: 0, ignored: 0 } },
+    errors: [REOPENED_ROW],
+    has_more: false,
+  };
+
+  async function runCaptured(sub, argv, fetchImpl) {
+    await seedActiveProject();
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = fetchImpl;
+    let threw = null;
+    captureStart();
+    try {
+      await invokeErrors(sub, argv);
+    } catch (e) { threw = e; } finally {
+      captureStop();
+      globalThis.fetch = prevFetch;
+    }
+    return { threw, stdout: capturedStdout(), stderr: capturedStderr() };
+  }
+
+  it("errors resolve POSTs the action and prints the API response verbatim; --human names the release and rows changed", async () => {
+    const response = { ...ERRORS_DETAIL, status: "resolved", status_changed_at: "2026-07-12T00:00:00.000Z", resolved_in_release_id: "rel_new1", changed: 1 };
+    const calls = [];
+    const spy = async (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof Request ? input.url : String(input));
+      const method = (init?.method || (input instanceof Request ? input.method : "GET") || "GET").toUpperCase();
+      const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+      calls.push({ method, path: new URL(url).pathname, apikey: headers.get("apikey") });
+      return new URL(url).pathname.includes("/errors/") ? json(response) : new Response("Not Found", { status: 404 });
+    };
+    const r = await runCaptured("resolve", ["fp_9b21fa", "--project", TEST_PROJECT.project_id], spy);
+    assert.equal(r.threw, null, `resolve must not exit; got: ${r.threw?.message || ""} / ${r.stderr}`);
+    assert.deepEqual(JSON.parse(r.stdout), response);
+    // Only the errors calls: other suites' background requests can reach this global spy.
+    const errorCalls = calls.filter((c) => c.path.includes("/errors"));
+    assert.deepEqual(errorCalls.map((c) => `${c.method} ${c.path}`), [`POST /projects/v1/${TEST_PROJECT.project_id}/errors/fp_9b21fa/resolve`]);
+    assert.equal(errorCalls[0].apikey, TEST_PROJECT.service_key);
+    const h = await runCaptured("resolve", ["fp_9b21fa", "--project", TEST_PROJECT.project_id, "--human"], spy);
+    assert.match(h.stdout, /is resolved \(1 row changed\)/);
+    assert.match(h.stdout, /resolved in\s+rel_new1/);
+  });
+
+  it("ignore and reopen need exactly one fingerprint id", async () => {
+    const r = await runCaptured("ignore", ["--project", TEST_PROJECT.project_id], async () => json({}));
+    assert.equal(r.threw?.message, "process.exit(1)");
+    assert.match(r.stderr, /Missing <fingerprint_id>/);
+  });
+
+  it("list --status passes the status through and refuses a fourth one locally", async () => {
+    const calls = [];
+    const ok = await runCaptured("list", ["--project", TEST_PROJECT.project_id, "--status", "open"], buildErrorsSpyFetch({ calls, listResponse: ERRORS_PAGE_CLEAN }));
+    assert.equal(ok.threw, null, ok.stderr);
+    assert.equal(new URL(calls.find((c) => c.method === "GET").url).searchParams.get("status"), "open");
+    const bad = await runCaptured("list", ["--project", TEST_PROJECT.project_id, "--status", "fixed"], buildErrorsSpyFetch({ calls: [], listResponse: ERRORS_PAGE_CLEAN }));
+    assert.equal(bad.threw?.message, "process.exit(1)");
+  });
+
+  it("gate: a group reopened under the release exits 1 and is named as reopened", async () => {
+    const r = await runCaptured(
+      "list",
+      ["--project", TEST_PROJECT.project_id, "--new-in", "rel_new1", "--fail-on-new", "--human"],
+      buildErrorsSpyFetch({ calls: [], listResponse: ERRORS_PAGE_REOPENED }),
+    );
+    assert.equal(r.threw?.message, "process.exit(1)", r.stderr);
+    assert.match(r.stdout, /1 resolved group reopened under rel_new1/);
+    assert.match(r.stdout, /fp_back01  REOPENED/);
+    assert.match(r.stdout, /run402 logs checkout --request-id req_back_new/);
+  });
+
+  it("--watch --fail-on-new stops on the first poll that reports a reopened group (exit 1)", async () => {
+    const r = await runCaptured(
+      "list",
+      ["--project", TEST_PROJECT.project_id, "--new-in", "rel_new1", "--watch", "60s", "--fail-on-new"],
+      buildErrorsSpyFetch({ calls: [], listResponse: ERRORS_PAGE_REOPENED }),
+    );
+    assert.equal(r.threw?.message, "process.exit(1)", `got ${r.threw?.message} / ${r.stderr}`);
+    assert.equal(JSON.parse(r.stdout).verdict.reopened_fingerprints, 1);
+  });
+
+  it("get explains a coarse row from coarse_reason and does not advise a redeploy when nothing was thrown", async () => {
+    const coarse = {
+      ...ERRORS_DETAIL,
+      fingerprint_id: "fp_paritytest01",
+      kind: "handled_5xx",
+      fingerprint_quality: "coarse",
+      coarse_reason: "no_error_thrown",
+      method: "GET",
+      route_pattern: "/api/threads/[id]",
+      message_template: "GET /api/threads/[id] answered HTTP 503 with no error detail",
+    };
+    const r = await runCaptured("get", ["fp_paritytest01", "--project", TEST_PROJECT.project_id, "--human"], async () => json(coarse));
+    assert.equal(r.threw, null, r.stderr);
+    assert.match(r.stdout, /answered this status itself/);
+    assert.doesNotMatch(r.stdout, /redeploy/i);
+    assert.match(r.stdout, /route\s+GET \/api\/threads\/\[id\]/);
+  });
 });

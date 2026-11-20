@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { beforeEach, describe, it, mock } from "node:test";
+import { afterEach, beforeEach, describe, it, mock } from "node:test";
 
 // A stand-in for Astro's App that behaves the way Astro does: cookies a page
 // sets through `Astro.cookies.set()` stay on the render context and reach the
@@ -9,6 +9,10 @@ let pageCookies: string[] = [];
 // The modules the stand-in manifest's loaders evaluated, in order.
 let evaluated: string[] = [];
 let failingModule: string | null = null;
+// How the stand-in render answers: Astro's own page (200), a throw Astro
+// catches itself (renderError with the error, then its 500 page), an
+// endpoint's own 503 with nothing thrown, or a throw that escapes render.
+let renderMode: "page" | "astro_caught" | "own_503" | "escapes" = "page";
 
 function loader(name: string) {
   return async () => {
@@ -21,7 +25,18 @@ function loader(name: string) {
 mock.module("astro/app/entrypoint", {
   namedExports: {
     createApp: () => ({
-      render: async (_request: Request, opts?: { addCookieHeader?: boolean }) => {
+      // Astro's BaseApp.render reaches renderError late-bound on the instance.
+      async renderError(_request: Request, _opts: { status: number; error?: unknown }) {
+        return new Response("<h1>Custom 500</h1>", { status: 500, headers: { "content-type": "text/html" } });
+      },
+      match: (request: Request) => {
+        const path = new URL(request.url).pathname;
+        return path.startsWith("/items/") ? { route: "/items/[id]" } : path === "/nope" ? undefined : { route: path };
+      },
+      async render(request: Request, opts?: { addCookieHeader?: boolean }) {
+        if (renderMode === "astro_caught") return this.renderError(request, { status: 500, error: new RangeError("item 42 missing") });
+        if (renderMode === "own_503") return new Response("busy", { status: 503 });
+        if (renderMode === "escapes") throw new TypeError("render exploded");
         renderOptions.push(opts);
         const response = new Response("<html></html>", { headers: { "content-type": "text/html" } });
         if (opts?.addCookieHeader) {
@@ -59,6 +74,62 @@ describe("SSR runtime handler", () => {
     const response = await handler(new Request("https://example.run402.app/"));
     assert.equal(response.status, 200);
     assert.deepEqual(response.headers.getSetCookie(), []);
+  });
+});
+
+describe("noting the errors Astro catches and the route it matched", () => {
+  const ACCESSOR = Symbol.for("run402.getCurrentContext");
+  let ctx: { caughtError: { value: unknown }; routePattern: { value: unknown } };
+  beforeEach(() => {
+    ctx = { caughtError: { value: null }, routePattern: { value: null } };
+    (globalThis as Record<symbol, unknown>)[ACCESSOR] = () => ctx;
+    renderMode = "page";
+  });
+  afterEach(() => {
+    delete (globalThis as Record<symbol, unknown>)[ACCESSOR];
+    renderMode = "page";
+  });
+
+  it("a page error Astro catches is noted with the matched route, and its 500 page is unchanged", async () => {
+    renderMode = "astro_caught";
+    const response = await handler(new Request("https://example.run402.app/items/42"));
+    assert.equal(response.status, 500);
+    assert.equal(await response.text(), "<h1>Custom 500</h1>");
+    assert.equal((ctx.caughtError.value as Error).message, "item 42 missing");
+    assert.equal(ctx.routePattern.value, "/items/[id]");
+  });
+
+  it("an endpoint's own 503 notes the route and no error", async () => {
+    renderMode = "own_503";
+    const response = await handler(new Request("https://example.run402.app/api/five"));
+    assert.equal(response.status, 503);
+    assert.equal(ctx.caughtError.value, null);
+    assert.equal(ctx.routePattern.value, "/api/five");
+  });
+
+  it("a throw that escapes render is noted and still answered R402_SSR_RUNTIME_ERROR", async () => {
+    renderMode = "escapes";
+    const response = await handler(new Request("https://example.run402.app/api/intake", { method: "POST" }));
+    assert.equal(response.status, 500);
+    assert.equal(((await response.json()) as { code: string }).code, "R402_SSR_RUNTIME_ERROR");
+    assert.equal((ctx.caughtError.value as Error).name, "TypeError");
+    assert.equal(ctx.routePattern.value, "/api/intake");
+  });
+
+  it("a page that renders notes nothing", async () => {
+    const response = await handler(new Request("https://example.run402.app/"));
+    assert.equal(response.status, 200);
+    assert.equal(ctx.caughtError.value, null);
+    assert.equal(ctx.routePattern.value, null);
+  });
+
+  it("without the wrapper's accessor (Run402 Core, an older wrapper) the response is the same and nothing is noted", async () => {
+    delete (globalThis as Record<symbol, unknown>)[ACCESSOR];
+    renderMode = "astro_caught";
+    const response = await handler(new Request("https://example.run402.app/items/42"));
+    assert.equal(response.status, 500);
+    assert.equal(await response.text(), "<h1>Custom 500</h1>");
+    assert.equal(ctx.caughtError.value, null);
   });
 });
 

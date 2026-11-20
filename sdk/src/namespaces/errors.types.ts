@@ -1,7 +1,8 @@
 /**
  * Request/response types for the `errors` namespace — the release-error-rollup
  * query surface (`GET /projects/v1/:project_id/errors` and
- * `GET /projects/v1/:project_id/errors/:fingerprint_id`).
+ * `GET /projects/v1/:project_id/errors/:fingerprint_id`) and the status
+ * actions (`POST …/errors/:fingerprint_id/resolve|ignore|reopen`).
  *
  * The platform keeps a durable, grouped error memory: every 5xx at the
  * gateway's invoke choke points is fingerprinted (normalization-first, so the
@@ -29,11 +30,29 @@ export type ErrorKind = "uncaught" | "boot_crash" | "invoke_failed" | "handled_5
  * How much signal a fingerprint's identity carries.
  * - `frame_names` — full fidelity: ≥1 stable stack frame name survived.
  * - `message_only` — normalized message template, no stable frames.
- * - `coarse` — no error detail at all (the function predates the error
- *   side-channel). Redeploying the function upgrades FUTURE occurrences to
- *   full fidelity; already-recorded coarse rows stay coarse.
+ * - `coarse` — no error detail: the function answered 500 or above with
+ *   nothing thrown, or its bundle predates the error side-channel. Which one
+ *   is the row's `coarse_reason`. A coarse row is keyed by its `method` and
+ *   `route_pattern` when a route is known.
  */
 export type FingerprintQuality = "frame_names" | "message_only" | "coarse";
+
+/**
+ * A group's status. `open` when first seen; `resolved` and `ignored` are set
+ * by a caller with deploy authority ({@link Errors.resolve},
+ * {@link Errors.ignore}, {@link Errors.reopen}). The platform changes it only
+ * by reopening a `resolved` group the next time its error is seen; it never
+ * resolves a group from quiet time. An `ignored` group keeps counting.
+ */
+export type ErrorGroupStatus = "open" | "resolved" | "ignored";
+
+/**
+ * Why a `coarse` row has no error detail, computed by the gateway when the row
+ * is read: `no_error_thrown` (the function's bundle carries the side-channel,
+ * so it answered the status itself) or `function_predates_side_channel`
+ * (redeploying the function upgrades its future occurrences). Null on other rows.
+ */
+export type CoarseReason = "no_error_thrown" | "function_predates_side_channel";
 
 /**
  * A platform-synthesized drill-down attached to a fingerprint. Today the only
@@ -58,6 +77,8 @@ export interface ErrorSample {
   id: string;
   at: string;
   release_id: string | null;
+  /** The route the request matched (`/api/threads/[id]`, never the path), when one is known. */
+  route_pattern?: string;
   [key: string]: unknown;
 }
 
@@ -93,6 +114,21 @@ export interface ErrorFingerprint {
   last_seen: string;
   first_seen_release_id: string | null;
   last_seen_release_id: string | null;
+  status: ErrorGroupStatus;
+  /** When the status last changed (a caller's action or a reopening); null while it never has. */
+  status_changed_at: string | null;
+  /** The project's live release when the group was last resolved. */
+  resolved_in_release_id: string | null;
+  /** When the group last reopened because its error was seen after a resolve. */
+  reopened_at: string | null;
+  /** The release the reopening occurrence was attributed to. */
+  reopened_in_release_id: string | null;
+  reopen_count: number;
+  /** A coarse row's method (part of its identity); null on other rows, whose samples carry the route. */
+  method: string | null;
+  /** A coarse row's route pattern (part of its identity); null when no route is known. */
+  route_pattern: string | null;
+  coarse_reason: CoarseReason | null;
   samples: ErrorSamples;
   next_actions: ErrorNextAction[];
   [key: string]: unknown;
@@ -106,6 +142,16 @@ export interface ErrorFingerprint {
  */
 export interface ErrorFingerprintDetail extends ErrorFingerprint {
   also_seen_in_functions?: string[];
+}
+
+/**
+ * The response of {@link Errors.resolve} / {@link Errors.ignore} /
+ * {@link Errors.reopen}: the fingerprint detail after the write, plus
+ * `changed`, the number of rows whose status changed (0 when the group was
+ * already in the requested status; the same error in two functions is two rows).
+ */
+export interface ErrorStatusChange extends ErrorFingerprintDetail {
+  changed: number;
 }
 
 /** The window the verdict + listing were computed over (resolved gateway-side). */
@@ -149,6 +195,10 @@ export interface ErrorsVerdict {
   baseline_release_id: string | null;
   new_fingerprints: number;
   recurring_fingerprints: number;
+  /** With `new_in`, groups reopened under that release; otherwise groups reopened inside the window. */
+  reopened_fingerprints: number;
+  /** Groups seen inside the window, per status (whatever the `status` filter). */
+  by_status: Record<ErrorGroupStatus, number>;
   invocations_in_window: number;
   coverage: ErrorsCoverage;
   row_cap: ErrorsRowCap;
@@ -177,10 +227,13 @@ export interface ListErrorsOptions {
   kind?: ErrorKind;
   /** Restrict to one fingerprint identity (`fp_…`). */
   fingerprint?: string;
+  /** Restrict to one status. Every status is listed when absent. */
+  status?: ErrorGroupStatus;
   /**
    * A release id, or the literal `"active"` (resolves to the live release
-   * gateway-side). Selects rows first seen UNDER that release and drives the
-   * verdict's `new_fingerprints` / baseline. Wire param: `new_in`.
+   * gateway-side). Selects rows first seen UNDER that release, or reopened
+   * under it, and drives the verdict's `new_fingerprints`,
+   * `reopened_fingerprints` and baseline. Wire param: `new_in`.
    */
   newIn?: string;
   /** Page size (server default 50, max 200). */
@@ -205,23 +258,26 @@ export interface WatchErrorsOptions {
   signal?: AbortSignal;
   /** Called after each SUCCESSFUL poll with the page and progress metadata. Throwing from it never breaks the loop. */
   onPoll?: (page: ErrorsPage, meta: { poll: number; elapsedMs: number }) => void;
-  /** Stop the moment a poll reports `verdict.new_fingerprints > 0`. Default true. */
+  /** Stop the moment a poll reports `verdict.new_fingerprints > 0` or `verdict.reopened_fingerprints > 0`. Default true. */
   failFast?: boolean;
 }
 
 /**
  * Result of {@link Errors.watch}. `clean` is `verdict.new_fingerprints === 0`
- * on the last observed page — the gateway's number, never a client recount.
- * `new_errors` is the `errors[]` of the final/triggering page (already
- * server-filtered to first-seen-under-release when `newIn` was passed).
+ * and `verdict.reopened_fingerprints === 0` on the last observed page — the
+ * gateway's numbers, never a client recount. `new_errors` and
+ * `reopened_errors` split the final/triggering page's `errors[]` by the
+ * compared release: first seen under it, or reopened under it.
  */
 export interface WatchErrorsResult {
-  /** True iff the last verdict reported zero new fingerprints. The promote-gate pass/fail. */
+  /** True iff the last verdict reported no new and no reopened groups. The promote-gate pass/fail. */
   clean: boolean;
   /** The last verdict observed (final poll, or the fail-fast triggering poll). */
   verdict: ErrorsVerdict;
-  /** The grouped errors from the final/triggering page. */
+  /** The groups first seen under the watched release. */
   new_errors: ErrorFingerprint[];
+  /** The resolved groups the watched release brought back. */
+  reopened_errors: ErrorFingerprint[];
   /** Number of successful polls performed. */
   polls: number;
   /** Wall-clock ms the watch ran. */
