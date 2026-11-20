@@ -1,6 +1,6 @@
 /**
  * The runtime notes the errors Astro catches and the route it matched
- * (specs/run402/astro-ssr-runtime.md), against a real Astro build of
+ * (astro-ssr-runtime), against a real Astro build of
  * test/fixtures/error-noting: the site is built with the Run402 adapter, its
  * server entry is loaded, and a request context with the wrapper's two slots
  * is published where the gateway's wrapper publishes it.
